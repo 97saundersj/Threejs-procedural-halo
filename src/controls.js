@@ -46,6 +46,8 @@ export const controls = (function() {
       this._velocity = new THREE.Vector3(0, 0, 0);
       this._decceleration = new THREE.Vector3(-10, -10, -10);
       this._acceleration = new THREE.Vector3(12, 12, 12);
+      this._minAcceleration = 4.0;
+      this._maxAcceleration = 24.0;
 
       this._SetupPointerLock();
 
@@ -59,6 +61,9 @@ export const controls = (function() {
       this._position.copy(controlObject.position);
       this._rotation.copy(controlObject.quaternion);
 
+      this._wheelHandler = (e) => this._OnMouseWheel(e);
+      document.addEventListener('wheel', this._wheelHandler, {passive: true});
+
       document.addEventListener('keydown', (e) => this._onKeyDown(e), false);
       document.addEventListener('keyup', (e) => this._onKeyUp(e), false);
 
@@ -71,13 +76,14 @@ export const controls = (function() {
       };
 
       const rollup = this._params.gui.addFolder('Camera.FPS');
-      rollup.add(this._params.guiParams.camera, "acceleration_x", 4.0, 24.0).onChange(
-        () => {
-          this._acceleration.set(
-            this._params.guiParams.camera.acceleration_x,
-            this._params.guiParams.camera.acceleration_x,
-            this._params.guiParams.camera.acceleration_x);
-        });
+      this._speedController = rollup
+          .add(this._params.guiParams.camera, "acceleration_x", this._minAcceleration, this._maxAcceleration)
+          .onChange(() => {
+            this._acceleration.set(
+                this._params.guiParams.camera.acceleration_x,
+                this._params.guiParams.camera.acceleration_x,
+                this._params.guiParams.camera.acceleration_x);
+          });
     }
 
     _onKeyDown(event) {
@@ -131,6 +137,34 @@ export const controls = (function() {
         case 34: // PG_DOWN
           this._move.down = false;
           break;
+      }
+    }
+
+    _OnMouseWheel(event) {
+      if (!this._enabled) {
+        return;
+      }
+
+      const direction = Math.sign(event.deltaY);
+      if (direction === 0) {
+        return;
+      }
+
+      const step = 0.5;
+      const current = this._params.guiParams.camera.acceleration_x;
+      const next = Math.max(
+          this._minAcceleration,
+          Math.min(this._maxAcceleration, current + (direction < 0 ? step : -step)));
+
+      if (next === current) {
+        return;
+      }
+
+      this._params.guiParams.camera.acceleration_x = next;
+      this._acceleration.set(next, next, next);
+
+      if (this._speedController) {
+        this._speedController.updateDisplay();
       }
     }
 

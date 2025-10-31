@@ -1,12 +1,16 @@
-
-
-export const terrain_constants = (function() {
+export const terrain_constants = (function () {
   return {
     QT_MIN_CELL_SIZE: 25,
     QT_MIN_CELL_RESOLUTION: 48,
-    PLANET_RADIUS: 400000.0,
+    PLANET_RADIUS: 63710.0,
+    RING_MAJOR_RADIUS: 63710.0,
+    RING_LATITUDE_CUTOFF: 0.02,
+    RING_LATITUDE_FADE: 0.05,
+    RING_DROP_EXPONENT: 1.5,
+    RING_CULL_LATITUDE: 0.08,
+    RING_OFFSET: 140000.0,
 
     NOISE_HEIGHT: 2000.0,
     NOISE_SCALE: 18000.0,
-  }
+  };
 })();

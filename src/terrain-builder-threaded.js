@@ -117,6 +117,9 @@ export const terrain_builder_threaded = (function() {
         offset: [params.offset.x, params.offset.y, params.offset.z],
         origin: params.origin,
         radius: params.radius,
+        center: [params.center.x, params.center.y, params.center.z],
+        shape: params.shape || 'planet',
+        shapeParams: params.shapeParams || {},
         resolution: params.resolution,
         worldMatrix: params.transform,
       };
