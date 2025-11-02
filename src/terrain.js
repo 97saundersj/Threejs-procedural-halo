@@ -100,7 +100,16 @@ export const terrain = (function () {
       };
 
       const onNoiseChanged = () => {
-        this._builder.Rebuild(this._chunks);
+        // Pass updated noise params to rebuild
+        this._builder.Rebuild(this._chunks, {
+          noiseParams: this._noiseParams,
+          biomesParams: this._biomesParams || {},
+          colourNoiseParams: this._colourNoiseParams || {},
+          colourGeneratorParams: {
+            biomeGeneratorParams: this._biomesParams || {},
+            colourNoiseParams: this._colourNoiseParams || {},
+          },
+        });
       };
 
       if (params.gui) {
@@ -153,7 +162,16 @@ export const terrain = (function () {
       };
 
       const onNoiseChanged = () => {
-        this._builder.Rebuild(this._chunks);
+        // Pass updated biome params to rebuild
+        this._builder.Rebuild(this._chunks, {
+          noiseParams: this._noiseParams || {},
+          biomesParams: this._biomesParams,
+          colourNoiseParams: this._colourNoiseParams || {},
+          colourGeneratorParams: {
+            biomeGeneratorParams: this._biomesParams,
+            colourNoiseParams: this._colourNoiseParams || {},
+          },
+        });
       };
 
       if (params.gui) {

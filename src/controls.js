@@ -1,9 +1,57 @@
-import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.112.1/build/three.module.js';
-import {PointerLockControls} from 'https://cdn.jsdelivr.net/npm/three@0.112.1/examples/jsm/controls/PointerLockControls.js';
-import {OrbitControls} from 'https://cdn.jsdelivr.net/npm/three@0.112.1/examples/jsm/controls/OrbitControls.js';
+import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.112.1/build/three.module.js";
+import { OrbitControls } from "https://cdn.jsdelivr.net/npm/three@0.112.1/examples/jsm/controls/OrbitControls.js";
 
+export const controls = (function () {
+  const KM_CUBE_SIZE = 1000;
+  const KM_CUBE_HALF = KM_CUBE_SIZE * 0.5;
+  const KM_CUBE_SPAWN_BUFFER = 500;
+  const KM_CUBE_COLOR = 0x1e88e5;
+  const KM_CUBE_GEOMETRY = new THREE.BoxGeometry(
+    KM_CUBE_SIZE,
+    KM_CUBE_SIZE,
+    KM_CUBE_SIZE
+  );
 
-export const controls = (function() {
+  const KM_CUBE_VS = `#version 300 es
+precision highp float;
+
+out float vFragDepth;
+
+void main() {
+  vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+  vec4 clipPosition = projectionMatrix * mvPosition;
+  gl_Position = clipPosition;
+  vFragDepth = 1.0 + clipPosition.w;
+}
+`;
+
+  const KM_CUBE_FS = `#version 300 es
+precision highp float;
+
+uniform vec3 color;
+uniform float logDepthBufFC;
+
+in float vFragDepth;
+
+out vec4 out_FragColor;
+
+void main() {
+  out_FragColor = vec4(color, 1.0);
+  gl_FragDepth = log2(vFragDepth) * logDepthBufFC * 0.5;
+}
+`;
+
+  function _CreateKilometreCubeMaterial(logDepthBufFC) {
+    return new THREE.ShaderMaterial({
+      uniforms: {
+        color: { value: new THREE.Color(KM_CUBE_COLOR) },
+        logDepthBufFC: { value: logDepthBufFC },
+      },
+      vertexShader: KM_CUBE_VS,
+      fragmentShader: KM_CUBE_FS,
+      glslVersion: THREE.GLSL3,
+    });
+  }
 
   class _OrbitControls {
     constructor(params) {
@@ -17,8 +65,7 @@ export const controls = (function() {
       this._controls.update();
     }
 
-    Update() {
-    }
+    Update() {}
   }
 
   // FPSControls was adapted heavily from a threejs example. Movement control
@@ -41,6 +88,8 @@ export const controls = (function() {
         right: false,
         up: false,
         down: false,
+        rotateLeft: false,
+        rotateRight: false,
       };
       this._standing = true;
       this._velocity = new THREE.Vector3(0, 0, 0);
@@ -48,24 +97,53 @@ export const controls = (function() {
       this._acceleration = new THREE.Vector3(12, 12, 12);
       this._minAcceleration = 4.0;
       this._maxAcceleration = 24.0;
+      this._rotationSpeed = Math.PI;
+
+      this._cameraWorldQuaternion = new THREE.Quaternion();
+      this._forwardVector = new THREE.Vector3();
+      this._sideVector = new THREE.Vector3();
+      this._upVector = new THREE.Vector3();
+      this._yawQuaternion = new THREE.Quaternion();
+      this._pitchQuaternion = new THREE.Quaternion();
+      this._rollQuaternion = new THREE.Quaternion();
+      this._yawAxis = new THREE.Vector3();
+      this._pitchAxis = new THREE.Vector3();
+      this._rollAxis = new THREE.Vector3();
+      this._mouseSensitivity = {
+        yaw: 0.002,
+        pitch: 0.002,
+      };
+      this._spawnDirection = new THREE.Vector3();
+      this._spawnPosition = new THREE.Vector3();
+      this._spawnUp = new THREE.Vector3();
+
+      this._gamepad = null;
+      this._gamepadSensitivity = {
+        yaw: 0.01,
+        pitch: 0.01,
+      };
+      this._gamepadDeadZone = 0.1;
+      this._gamepadStartButtonPressed = false;
+
+      this._camera = params.camera;
+      this._camera.updateMatrixWorld(true);
+      this._logDepthBufFC = 2.0 / (Math.log(this._camera.far + 1.0) / Math.LN2);
 
       this._SetupPointerLock();
 
-      this._controls = new PointerLockControls(
-          params.camera, document.body);
-      params.scene.add(this._controls.getObject());
-
-      const controlObject = this._controls.getObject();
-      this._position = new THREE.Vector3();
-      this._rotation = new THREE.Quaternion();
-      this._position.copy(controlObject.position);
-      this._rotation.copy(controlObject.quaternion);
-
       this._wheelHandler = (e) => this._OnMouseWheel(e);
-      document.addEventListener('wheel', this._wheelHandler, {passive: true});
+      document.addEventListener("wheel", this._wheelHandler, { passive: true });
 
-      document.addEventListener('keydown', (e) => this._onKeyDown(e), false);
-      document.addEventListener('keyup', (e) => this._onKeyUp(e), false);
+      this._mouseMoveHandler = (e) => this._OnMouseMove(e);
+      document.addEventListener("mousemove", this._mouseMoveHandler, false);
+
+      this._clickHandler = (e) => this._OnMouseDown(e);
+      document.addEventListener("mousedown", this._clickHandler, false);
+
+      document.addEventListener("keydown", (e) => this._onKeyDown(e), false);
+      document.addEventListener("keyup", (e) => this._onKeyUp(e), false);
+
+      this._SetupGamepad();
 
       this._InitGUI();
     }
@@ -75,22 +153,29 @@ export const controls = (function() {
         acceleration_x: 12,
       };
 
-      const rollup = this._params.gui.addFolder('Camera.FPS');
+      const rollup = this._params.gui.addFolder("Camera.FPS");
       this._speedController = rollup
-          .add(this._params.guiParams.camera, "acceleration_x", this._minAcceleration, this._maxAcceleration)
-          .onChange(() => {
-            this._acceleration.set(
-                this._params.guiParams.camera.acceleration_x,
-                this._params.guiParams.camera.acceleration_x,
-                this._params.guiParams.camera.acceleration_x);
-          });
+        .add(
+          this._params.guiParams.camera,
+          "acceleration_x",
+          this._minAcceleration,
+          this._maxAcceleration
+        )
+        .onChange(() => {
+          this._acceleration.set(
+            this._params.guiParams.camera.acceleration_x,
+            this._params.guiParams.camera.acceleration_x,
+            this._params.guiParams.camera.acceleration_x
+          );
+        });
     }
 
     _onKeyDown(event) {
       switch (event.keyCode) {
         case 38: // up
         case 87: // w
-          this._move.forward = true;
+          this._move.forward = false;
+          this._move.backward = true;
           break;
         case 37: // left
         case 65: // a
@@ -98,7 +183,8 @@ export const controls = (function() {
           break;
         case 40: // down
         case 83: // s
-          this._move.backward = true;
+          this._move.backward = false;
+          this._move.forward = true;
           break;
         case 39: // right
         case 68: // d
@@ -110,14 +196,21 @@ export const controls = (function() {
         case 34: // PG_DOWN
           this._move.down = true;
           break;
+        case 81: // q
+          this._move.rotateRight = true;
+          break;
+        case 69: // e
+          this._move.rotateLeft = true;
+          break;
       }
     }
 
     _onKeyUp(event) {
-      switch(event.keyCode) {
+      switch (event.keyCode) {
         case 38: // up
         case 87: // w
           this._move.forward = false;
+          this._move.backward = false;
           break;
         case 37: // left
         case 65: // a
@@ -126,6 +219,7 @@ export const controls = (function() {
         case 40: // down
         case 83: // s
           this._move.backward = false;
+          this._move.forward = false;
           break;
         case 39: // right
         case 68: // d
@@ -136,6 +230,12 @@ export const controls = (function() {
           break;
         case 34: // PG_DOWN
           this._move.down = false;
+          break;
+        case 81: // q
+          this._move.rotateRight = false;
+          break;
+        case 69: // e
+          this._move.rotateLeft = false;
           break;
       }
     }
@@ -153,8 +253,12 @@ export const controls = (function() {
       const step = 0.5;
       const current = this._params.guiParams.camera.acceleration_x;
       const next = Math.max(
-          this._minAcceleration,
-          Math.min(this._maxAcceleration, current + (direction < 0 ? step : -step)));
+        this._minAcceleration,
+        Math.min(
+          this._maxAcceleration,
+          current + (direction < 0 ? step : -step)
+        )
+      );
 
       if (next === current) {
         return;
@@ -168,70 +272,334 @@ export const controls = (function() {
       }
     }
 
+    _OnMouseDown(event) {
+      if (!this._enabled || event.button !== 0) {
+        return;
+      }
+
+      const camera = this._camera;
+      const scene = this._params.scene;
+      if (!camera || !scene) {
+        return;
+      }
+
+      camera.getWorldDirection(this._spawnDirection).normalize();
+
+      const spawnDistance = KM_CUBE_HALF + KM_CUBE_SPAWN_BUFFER;
+      this._spawnPosition.copy(camera.position);
+      this._spawnPosition.addScaledVector(this._spawnDirection, spawnDistance);
+
+      const upDirection = this._spawnUp
+        .set(0, 1, 0)
+        .applyQuaternion(camera.quaternion)
+        .normalize();
+      const verticalOffset = KM_CUBE_HALF + 50;
+      this._spawnPosition.addScaledVector(upDirection, verticalOffset);
+
+      const cube = new THREE.Mesh(
+        KM_CUBE_GEOMETRY,
+        _CreateKilometreCubeMaterial(this._logDepthBufFC)
+      );
+
+      cube.position.copy(this._spawnPosition);
+      cube.quaternion.copy(camera.quaternion);
+      cube.castShadow = false;
+      cube.receiveShadow = false;
+
+      scene.add(cube);
+    }
+
+    _OnMouseMove(event) {
+      if (!this._enabled) {
+        return;
+      }
+
+      const movementX =
+        event.movementX || event.mozMovementX || event.webkitMovementX || 0;
+      const movementY =
+        event.movementY || event.mozMovementY || event.webkitMovementY || 0;
+
+      if (movementX === 0 && movementY === 0) {
+        return;
+      }
+
+      const camera = this._camera;
+
+      if (movementX !== 0) {
+        this._yawAxis
+          .set(0, 1, 0)
+          .applyQuaternion(camera.quaternion)
+          .normalize();
+        this._yawQuaternion.setFromAxisAngle(
+          this._yawAxis,
+          -movementX * this._mouseSensitivity.yaw
+        );
+        camera.quaternion.premultiply(this._yawQuaternion);
+      }
+
+      if (movementY !== 0) {
+        this._pitchAxis
+          .set(1, 0, 0)
+          .applyQuaternion(camera.quaternion)
+          .normalize();
+        this._pitchQuaternion.setFromAxisAngle(
+          this._pitchAxis,
+          -movementY * this._mouseSensitivity.pitch
+        );
+        camera.quaternion.premultiply(this._pitchQuaternion);
+      }
+
+      camera.quaternion.normalize();
+      camera.updateMatrixWorld(true);
+    }
+
     _SetupPointerLock() {
-      const hasPointerLock = (
-          'pointerLockElement' in document ||
-          'mozPointerLockElement' in document ||
-          'webkitPointerLockElement' in document);
+      const hasPointerLock =
+        "pointerLockElement" in document ||
+        "mozPointerLockElement" in document ||
+        "webkitPointerLockElement" in document;
       if (hasPointerLock) {
         const lockChange = (event) => {
-          if (document.pointerLockElement === document.body ||
-              document.mozPointerLockElement === document.body ||
-              document.webkitPointerLockElement === document.body ) {
+          if (
+            document.pointerLockElement === document.body ||
+            document.mozPointerLockElement === document.body ||
+            document.webkitPointerLockElement === document.body
+          ) {
             this._enabled = true;
-            this._controls.enabled = true;
           } else {
-            this._controls.enabled = false;
+            this._enabled = false;
           }
         };
         const lockError = (event) => {
           console.log(event);
         };
 
-        document.addEventListener('pointerlockchange', lockChange, false);
-        document.addEventListener('webkitpointerlockchange', lockChange, false);
-        document.addEventListener('mozpointerlockchange', lockChange, false);
-        document.addEventListener('pointerlockerror', lockError, false);
-        document.addEventListener('mozpointerlockerror', lockError, false);
-        document.addEventListener('webkitpointerlockerror', lockError, false);
+        document.addEventListener("pointerlockchange", lockChange, false);
+        document.addEventListener("webkitpointerlockchange", lockChange, false);
+        document.addEventListener("mozpointerlockchange", lockChange, false);
+        document.addEventListener("pointerlockerror", lockError, false);
+        document.addEventListener("mozpointerlockerror", lockError, false);
+        document.addEventListener("webkitpointerlockerror", lockError, false);
 
-        document.getElementById('target').addEventListener('click', (event) => {
-          document.body.requestPointerLock = (
+        document.getElementById("target").addEventListener(
+          "click",
+          (event) => {
+            document.body.requestPointerLock =
               document.body.requestPointerLock ||
               document.body.mozRequestPointerLock ||
-              document.body.webkitRequestPointerLock);
+              document.body.webkitRequestPointerLock;
 
-          if (/Firefox/i.test(navigator.userAgent)) {
-            const fullScreenChange = (event) => {
-              if (document.fullscreenElement === document.body ||
+            if (/Firefox/i.test(navigator.userAgent)) {
+              const fullScreenChange = (event) => {
+                if (
+                  document.fullscreenElement === document.body ||
                   document.mozFullscreenElement === document.body ||
-                  document.mozFullScreenElement === document.body) {
-                document.removeEventListener('fullscreenchange', fullScreenChange);
-                document.removeEventListener('mozfullscreenchange', fullScreenChange);
-                document.body.requestPointerLock();
-              }
-            };
-            document.addEventListener(
-                'fullscreenchange', fullScreenChange, false);
-            document.addEventListener(
-                'mozfullscreenchange', fullScreenChange, false);
-            document.body.requestFullscreen = (
+                  document.mozFullScreenElement === document.body
+                ) {
+                  document.removeEventListener(
+                    "fullscreenchange",
+                    fullScreenChange
+                  );
+                  document.removeEventListener(
+                    "mozfullscreenchange",
+                    fullScreenChange
+                  );
+                  document.body.requestPointerLock();
+                }
+              };
+              document.addEventListener(
+                "fullscreenchange",
+                fullScreenChange,
+                false
+              );
+              document.addEventListener(
+                "mozfullscreenchange",
+                fullScreenChange,
+                false
+              );
+              document.body.requestFullscreen =
                 document.body.requestFullscreen ||
                 document.body.mozRequestFullscreen ||
                 document.body.mozRequestFullScreen ||
-                document.body.webkitRequestFullscreen);
-            document.body.requestFullscreen();
-          } else {
-            document.body.requestPointerLock();
+                document.body.webkitRequestFullscreen;
+              document.body.requestFullscreen();
+            } else {
+              document.body.requestPointerLock();
+            }
+          },
+          false
+        );
+      }
+    }
+
+    _SetupGamepad() {
+      const onGamepadConnected = (event) => {
+        this._gamepad = event.gamepad;
+      };
+
+      const onGamepadDisconnected = (event) => {
+        if (this._gamepad && this._gamepad.index === event.gamepad.index) {
+          this._gamepad = null;
+        }
+      };
+
+      window.addEventListener("gamepadconnected", onGamepadConnected, false);
+      window.addEventListener(
+        "gamepaddisconnected",
+        onGamepadDisconnected,
+        false
+      );
+
+      // Check for already connected gamepads
+      const gamepads = navigator.getGamepads();
+      for (let i = 0; i < gamepads.length; i++) {
+        if (gamepads[i]) {
+          this._gamepad = gamepads[i];
+          break;
+        }
+      }
+    }
+
+    _ApplyDeadZone(value, deadZone) {
+      if (Math.abs(value) < deadZone) {
+        return 0;
+      }
+      const sign = value >= 0 ? 1 : -1;
+      const adjustedValue = (Math.abs(value) - deadZone) / (1 - deadZone);
+      return sign * adjustedValue;
+    }
+
+    _UpdateGamepadInput(timeInSeconds) {
+      if (!this._enabled) {
+        return;
+      }
+
+      // Poll gamepad state
+      const gamepads = navigator.getGamepads();
+      let gamepad = null;
+
+      if (this._gamepad) {
+        gamepad = gamepads[this._gamepad.index];
+        if (!gamepad || !gamepad.connected) {
+          this._gamepad = null;
+          gamepad = null;
+        }
+      }
+
+      if (!gamepad) {
+        // Try to find first connected gamepad
+        for (let i = 0; i < gamepads.length; i++) {
+          if (gamepads[i] && gamepads[i].connected) {
+            this._gamepad = gamepads[i];
+            gamepad = gamepads[i];
+            break;
           }
-        }, false);
+        }
+      }
+
+      if (!gamepad) {
+        return;
+      }
+
+      const axes = gamepad.axes;
+      const buttons = gamepad.buttons;
+
+      // Left stick: movement (axes[0] = left/right, axes[1] = forward/backward)
+      const leftStickX = this._ApplyDeadZone(
+        axes[0] || 0,
+        this._gamepadDeadZone
+      );
+      const leftStickY = this._ApplyDeadZone(
+        axes[1] || 0,
+        this._gamepadDeadZone
+      );
+
+      // Update movement state based on left stick
+      // Note: keyboard mapping uses backward=true for forward movement and forward=true for backward movement
+      this._move.left = leftStickX < 0;
+      this._move.right = leftStickX > 0;
+      this._move.backward = leftStickY < 0; // inverted: stick backward = backward flag (moves forward)
+      this._move.forward = leftStickY > 0; // inverted: stick forward = forward flag (moves backward)
+
+      // Right stick: camera rotation (axes[2] = yaw, axes[3] = pitch)
+      const rightStickX = this._ApplyDeadZone(
+        axes[2] || 0,
+        this._gamepadDeadZone
+      );
+      const rightStickY = this._ApplyDeadZone(
+        axes[3] || 0,
+        this._gamepadDeadZone
+      );
+
+      // Apply camera rotation
+      if (rightStickX !== 0 || rightStickY !== 0) {
+        const camera = this._camera;
+
+        if (rightStickX !== 0) {
+          this._yawAxis
+            .set(0, 1, 0)
+            .applyQuaternion(camera.quaternion)
+            .normalize();
+          this._yawQuaternion.setFromAxisAngle(
+            this._yawAxis,
+            -rightStickX * this._gamepadSensitivity.yaw * timeInSeconds * 60
+          );
+          camera.quaternion.premultiply(this._yawQuaternion);
+        }
+
+        if (rightStickY !== 0) {
+          this._pitchAxis
+            .set(1, 0, 0)
+            .applyQuaternion(camera.quaternion)
+            .normalize();
+          this._pitchQuaternion.setFromAxisAngle(
+            this._pitchAxis,
+            -rightStickY * this._gamepadSensitivity.pitch * timeInSeconds * 60
+          );
+          camera.quaternion.premultiply(this._pitchQuaternion);
+        }
+
+        camera.quaternion.normalize();
+        camera.updateMatrixWorld(true);
+      }
+
+      // Triggers or D-pad for up/down movement
+      // Left trigger (axes[4]) or D-pad up for move up
+      const leftTrigger = axes[4] || 0;
+      const dpadUp = buttons[12] && buttons[12].pressed;
+      this._move.up = leftTrigger > 0.1 || dpadUp;
+
+      // Right trigger (axes[5]) or D-pad down for move down
+      const rightTrigger = axes[5] || 0;
+      const dpadDown = buttons[13] && buttons[13].pressed;
+      this._move.down = rightTrigger > 0.1 || dpadDown;
+
+      // Shoulder buttons for roll (inverted)
+      const leftShoulder = buttons[4] && buttons[4].pressed;
+      const rightShoulder = buttons[5] && buttons[5].pressed;
+      this._move.rotateLeft = rightShoulder; // inverted
+      this._move.rotateRight = leftShoulder; // inverted
+
+      // Start button to exit pointer lock (like Escape)
+      const startButton = buttons[9] && buttons[9].pressed;
+      if (startButton && !this._gamepadStartButtonPressed) {
+        this._gamepadStartButtonPressed = true;
+        const exitPointerLock =
+          document.exitPointerLock ||
+          document.mozExitPointerLock ||
+          document.webkitExitPointerLock;
+        if (exitPointerLock) {
+          exitPointerLock.call(document);
+        }
+      } else if (!startButton) {
+        this._gamepadStartButtonPressed = false;
       }
     }
 
     _FindIntersections(boxes, position) {
       const sphere = new THREE.Sphere(position, this._radius);
 
-      const intersections = boxes.filter(b => {
+      const intersections = boxes.filter((b) => {
         return sphere.intersectsBox(b);
       });
 
@@ -243,10 +611,12 @@ export const controls = (function() {
         return;
       }
 
+      this._UpdateGamepadInput(timeInSeconds);
+
       const frameDecceleration = new THREE.Vector3(
-          this._velocity.x * this._decceleration.x,
-          this._velocity.y * this._decceleration.y,
-          this._velocity.z * this._decceleration.z
+        this._velocity.x * this._decceleration.x,
+        this._velocity.y * this._decceleration.y,
+        this._velocity.z * this._decceleration.z
       );
       frameDecceleration.multiplyScalar(timeInSeconds);
 
@@ -271,36 +641,58 @@ export const controls = (function() {
         this._velocity.y -= 2 ** this._acceleration.y * timeInSeconds;
       }
 
-      const controlObject = this._controls.getObject();
+      let rollDelta = 0;
+      if (this._move.rotateLeft) {
+        rollDelta += this._rotationSpeed * timeInSeconds;
+      }
+      if (this._move.rotateRight) {
+        rollDelta -= this._rotationSpeed * timeInSeconds;
+      }
+      if (rollDelta !== 0) {
+        this._rollAxis
+          .set(0, 0, -1)
+          .applyQuaternion(this._camera.quaternion)
+          .normalize();
+        this._rollQuaternion.setFromAxisAngle(this._rollAxis, rollDelta);
+        this._camera.quaternion.premultiply(this._rollQuaternion);
+        this._camera.quaternion.normalize();
+        this._camera.updateMatrixWorld(true);
+      }
 
-      const oldPosition = new THREE.Vector3();
-      oldPosition.copy(controlObject.position);
+      this._camera.updateMatrixWorld(true);
+      const cameraQuaternion = this._camera.getWorldQuaternion(
+        this._cameraWorldQuaternion
+      );
 
-      const forward = new THREE.Vector3(0, 0, 1);
-      forward.applyQuaternion(controlObject.quaternion);
-      forward.normalize();
+      const forward = this._forwardVector
+        .set(0, 0, -1)
+        .applyQuaternion(cameraQuaternion)
+        .normalize();
+      const sideways = this._sideVector
+        .set(1, 0, 0)
+        .applyQuaternion(cameraQuaternion)
+        .normalize();
+      const updown = this._upVector
+        .set(0, 1, 0)
+        .applyQuaternion(cameraQuaternion)
+        .normalize();
 
-      const updown = new THREE.Vector3(0, 1, 0);
+      this._camera.position.addScaledVector(
+        forward,
+        this._velocity.z * timeInSeconds
+      );
+      this._camera.position.addScaledVector(
+        sideways,
+        this._velocity.x * timeInSeconds
+      );
+      this._camera.position.addScaledVector(
+        updown,
+        this._velocity.y * timeInSeconds
+      );
 
-      const sideways = new THREE.Vector3(1, 0, 0);
-      sideways.applyQuaternion(controlObject.quaternion);
-      sideways.normalize();
-
-      sideways.multiplyScalar(this._velocity.x * timeInSeconds);
-      updown.multiplyScalar(this._velocity.y * timeInSeconds);
-      forward.multiplyScalar(this._velocity.z * timeInSeconds);
-
-      controlObject.position.add(forward);
-      controlObject.position.add(sideways);
-      controlObject.position.add(updown);
-
-      // this._position.lerp(controlObject.position, 0.15);
-      this._rotation.slerp(controlObject.quaternion, 0.15);
-
-      // controlObject.position.copy(this._position);
-      controlObject.quaternion.copy(this._rotation);
+      this._camera.updateMatrixWorld(true);
     }
-  };
+  }
 
   class _ShipControls {
     constructor(params) {
@@ -324,8 +716,8 @@ export const controls = (function() {
       this._decceleration = new THREE.Vector3(-0.001, -0.0001, -1);
       this._acceleration = new THREE.Vector3(100, 0.1, 25000);
 
-      document.addEventListener('keydown', (e) => this._onKeyDown(e), false);
-      document.addEventListener('keyup', (e) => this._onKeyUp(e), false);
+      document.addEventListener("keydown", (e) => this._onKeyDown(e), false);
+      document.addEventListener("keyup", (e) => this._onKeyUp(e), false);
 
       this._InitGUI();
     }
@@ -336,13 +728,15 @@ export const controls = (function() {
         acceleration_y: 0.1,
       };
 
-      const rollup = this._params.gui.addFolder('Camera.Ship');
-      rollup.add(this._params.guiParams.camera, "acceleration_x", 50.0, 25000.0).onChange(
-        () => {
+      const rollup = this._params.gui.addFolder("Camera.Ship");
+      rollup
+        .add(this._params.guiParams.camera, "acceleration_x", 50.0, 25000.0)
+        .onChange(() => {
           this._acceleration.x = this._params.guiParams.camera.acceleration_x;
         });
-      rollup.add(this._params.guiParams.camera, "acceleration_y", 0.001, 0.1).onChange(
-        () => {
+      rollup
+        .add(this._params.guiParams.camera, "acceleration_y", 0.001, 0.1)
+        .onChange(() => {
           this._acceleration.y = this._params.guiParams.camera.acceleration_y;
         });
     }
@@ -379,7 +773,7 @@ export const controls = (function() {
     }
 
     _onKeyUp(event) {
-      switch(event.keyCode) {
+      switch (event.keyCode) {
         case 87: // w
           this._move.forward = false;
           break;
@@ -409,9 +803,9 @@ export const controls = (function() {
 
     Update(timeInSeconds) {
       const frameDecceleration = new THREE.Vector3(
-          this._velocity.x * this._decceleration.x,
-          this._velocity.y * this._decceleration.y,
-          this._velocity.z * this._decceleration.z
+        this._velocity.x * this._decceleration.x,
+        this._velocity.y * this._decceleration.y,
+        this._velocity.z * this._decceleration.z
       );
       frameDecceleration.multiplyScalar(timeInSeconds);
 
@@ -424,7 +818,10 @@ export const controls = (function() {
 
       if (this._move.forward) {
         _A.set(1, 0, 0);
-        _Q.setFromAxisAngle(_A, -Math.PI * timeInSeconds * this._acceleration.y);
+        _Q.setFromAxisAngle(
+          _A,
+          -Math.PI * timeInSeconds * this._acceleration.y
+        );
         _R.multiply(_Q);
       }
       if (this._move.backward) {
@@ -439,7 +836,10 @@ export const controls = (function() {
       }
       if (this._move.right) {
         _A.set(0, 0, 1);
-        _Q.setFromAxisAngle(_A, -Math.PI * timeInSeconds * this._acceleration.y);
+        _Q.setFromAxisAngle(
+          _A,
+          -Math.PI * timeInSeconds * this._acceleration.y
+        );
         _R.multiply(_Q);
       }
       if (this._move.rocket) {
@@ -472,7 +872,7 @@ export const controls = (function() {
 
       oldPosition.copy(controlObject.position);
     }
-  };
+  }
 
   return {
     ShipControls: _ShipControls,

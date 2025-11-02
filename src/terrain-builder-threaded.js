@@ -1,16 +1,13 @@
+import { terrain_chunk } from "./terrain-chunk.js";
 
-import {terrain_chunk} from './terrain-chunk.js';
-
-
-export const terrain_builder_threaded = (function() {
-
+export const terrain_builder_threaded = (function () {
   const _NUM_WORKERS = 7;
 
   let _IDs = 0;
 
   class WorkerThread {
     constructor(s) {
-      this._worker = new Worker(s, {type: 'module'});
+      this._worker = new Worker(s, { type: "module" });
       this._worker.onmessage = (e) => {
         this._OnMessage(e);
       };
@@ -36,7 +33,7 @@ export const terrain_builder_threaded = (function() {
 
   class WorkerThreadPool {
     constructor(sz, entry) {
-      this._workers = [...Array(sz)].map(_ => new WorkerThread(entry));
+      this._workers = [...Array(sz)].map((_) => new WorkerThread(entry));
       this._free = [...this._workers];
       this._busy = {};
       this._queue = [];
@@ -78,13 +75,15 @@ export const terrain_builder_threaded = (function() {
       this._old = [];
 
       this._workerPool = new WorkerThreadPool(
-          _NUM_WORKERS, 'src/terrain-builder-threaded-worker.js');
-  
+        _NUM_WORKERS,
+        "src/terrain-builder-threaded-worker.js"
+      );
+
       this._params = params;
     }
 
     _OnResult(chunk, msg) {
-      if (msg.subject == 'build_chunk_result') {
+      if (msg.subject == "build_chunk_result") {
         chunk.RebuildMeshFromData(msg.data);
         chunk.Show();
       }
@@ -118,14 +117,14 @@ export const terrain_builder_threaded = (function() {
         origin: params.origin,
         radius: params.radius,
         center: [params.center.x, params.center.y, params.center.z],
-        shape: params.shape || 'planet',
+        shape: params.shape || "planet",
         shapeParams: params.shapeParams || {},
         resolution: params.resolution,
         worldMatrix: params.transform,
       };
 
       const msg = {
-        subject: 'build_chunk',
+        subject: "build_chunk",
         params: threadedParams,
       };
 
@@ -133,7 +132,7 @@ export const terrain_builder_threaded = (function() {
         this._OnResult(c, m);
       });
 
-      return c;    
+      return c;
     }
 
     RetireChunks(chunks) {
@@ -154,9 +153,50 @@ export const terrain_builder_threaded = (function() {
       return this._workerPool.Busy;
     }
 
-    Rebuild(chunks) {
+    Rebuild(chunks, updatedParams) {
       for (let k in chunks) {
-        this._workerPool.Enqueue(chunks[k].chunk._params);
+        const chunk = chunks[k].chunk;
+        const params = chunk._params;
+
+        // Update params with latest noise/biome values if provided
+        if (updatedParams) {
+          if (updatedParams.noiseParams)
+            params.noiseParams = updatedParams.noiseParams;
+          if (updatedParams.biomesParams)
+            params.biomesParams = updatedParams.biomesParams;
+          if (updatedParams.colourNoiseParams)
+            params.colourNoiseParams = updatedParams.colourNoiseParams;
+          if (updatedParams.colourGeneratorParams)
+            params.colourGeneratorParams = updatedParams.colourGeneratorParams;
+        }
+
+        // Format params for worker thread (same as AllocateChunk)
+        const threadedParams = {
+          noiseParams: params.noiseParams,
+          colourNoiseParams: params.colourNoiseParams,
+          biomesParams: params.biomesParams,
+          colourGeneratorParams: params.colourGeneratorParams,
+          heightGeneratorsParams: params.heightGeneratorsParams,
+          width: params.width,
+          offset: [params.offset.x, params.offset.y, params.offset.z],
+          origin: params.origin,
+          radius: params.radius,
+          center: [params.center.x, params.center.y, params.center.z],
+          shape: params.shape || "planet",
+          shapeParams: params.shapeParams || {},
+          resolution: params.resolution,
+          worldMatrix: params.transform,
+        };
+
+        const msg = {
+          subject: "build_chunk",
+          params: threadedParams,
+        };
+
+        chunk.Hide();
+        this._workerPool.Enqueue(msg, (m) => {
+          this._OnResult(chunk, m);
+        });
       }
     }
 
@@ -169,6 +209,6 @@ export const terrain_builder_threaded = (function() {
   }
 
   return {
-    TerrainChunkRebuilder_Threaded: _TerrainChunkRebuilder_Threaded
-  }
+    TerrainChunkRebuilder_Threaded: _TerrainChunkRebuilder_Threaded,
+  };
 })();
