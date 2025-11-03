@@ -73,6 +73,12 @@ export const terrain = (function () {
           logDepthBufFC: {
             value: 2.0 / (Math.log(params.camera.far + 1.0) / Math.LN2),
           },
+          sunDirection: {
+            value: new THREE.Vector3(1, 1, -1).normalize(),
+          },
+          ambientLightIntensity: {
+            value: terrain_constants.AMBIENT_LIGHT_INTENSITY,
+          },
         },
         vertexShader: terrain_shader.VS,
         fragmentShader: terrain_shader.PS,
@@ -378,6 +384,12 @@ export const terrain = (function () {
       }
 
       this._chunks = newTerrainChunks;
+    }
+
+    UpdateSunDirection(sunDirection) {
+      if (this._material && this._material.uniforms.sunDirection) {
+        this._material.uniforms.sunDirection.value.copy(sunDirection);
+      }
     }
   }
 

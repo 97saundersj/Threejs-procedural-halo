@@ -130,6 +130,7 @@ export const graphics = (function () {
           planetRadius: { value: null },
           atmosphereRadius: { value: null },
           logDepthBufFC: { value: logDepthBufFC },
+          sunDirection: { value: new THREE.Vector3(1, 1, -1).normalize() },
         },
       });
       var postPlane = new THREE.PlaneBufferGeometry(2, 2);
@@ -143,32 +144,28 @@ export const graphics = (function () {
     }
 
     _CreateLights() {
-      let light = new THREE.DirectionalLight(0xffffff, 1);
-      light.position.set(100, 100, -100);
-      light.target.position.set(0, 0, 0);
-      light.castShadow = false;
-      this._scene.add(light);
+      // Single sun directional light for realistic planetary lighting
+      // Position will be set to match sun direction in UpdateLights
+      this._sunLight = new THREE.DirectionalLight(0xffffff, 1.0);
+      this._sunLight.position.set(100, 100, -100);
+      this._sunLight.target.position.set(0, 0, 0);
+      this._sunLight.castShadow = true;
+      this._scene.add(this._sunLight);
 
-      light = new THREE.DirectionalLight(0x404040, 1);
-      light.position.set(100, 100, -100);
-      light.target.position.set(0, 0, 0);
-      light.castShadow = false;
-      this._scene.add(light);
+      // Minimal ambient light for starlight on dark side
+      /*
+      const ambientLight = new THREE.AmbientLight(0xffffff, 0.08);
+      this._scene.add(ambientLight);
+      */
+    }
 
-      light = new THREE.DirectionalLight(0x404040, 1);
-      light.position.set(100, 100, -100);
-      light.target.position.set(0, 0, 0);
-      light.castShadow = false;
-      this._scene.add(light);
-
-      light = new THREE.DirectionalLight(0x202040, 1);
-      light.position.set(100, -100, 100);
-      light.target.position.set(0, 0, 0);
-      light.castShadow = false;
-      this._scene.add(light);
-
-      light = new THREE.AmbientLight(0xffffff, 1.0);
-      this._scene.add(light);
+    UpdateLights(sunDirection) {
+      // Update sun light position to match sun direction
+      // Directional light position is used for direction (not position)
+      const lightDistance = 1000000; // Far enough for parallel rays
+      this._sunLight.position.copy(sunDirection).multiplyScalar(-lightDistance);
+      this._sunLight.target.position.set(0, 0, 0);
+      this._sunLight.updateMatrixWorld();
     }
 
     _OnWindowResize() {
@@ -185,6 +182,15 @@ export const graphics = (function () {
 
     get Camera() {
       return this._camera;
+    }
+
+    UpdateSunDirection(sunDirection) {
+      if (this._sunLight) {
+        this.UpdateLights(sunDirection);
+      }
+      if (this._depthPass && this._depthPass.uniforms.sunDirection) {
+        this._depthPass.uniforms.sunDirection.value.copy(sunDirection);
+      }
     }
 
     Render(timeInSeconds) {
@@ -213,6 +219,7 @@ export const graphics = (function () {
         0,
         0
       );
+      // Sun direction will be updated externally via UpdateSunDirection
       this._depthPass.uniformsNeedUpdate = true;
 
       this._threejs.render(this._postScene, this._postCamera);

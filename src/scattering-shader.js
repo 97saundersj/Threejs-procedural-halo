@@ -1,5 +1,4 @@
-export const scattering_shader = (function() {
-
+export const scattering_shader = (function () {
   const _VS = `#version 300 es
 
   #define saturate(a) clamp( a, 0.0, 1.0 )
@@ -11,7 +10,6 @@ export const scattering_shader = (function() {
     gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
   }
   `;
-  
 
   const _PS = `#version 300 es
   #include <packing>
@@ -39,6 +37,7 @@ export const scattering_shader = (function() {
   uniform float atmosphereRadius;
   
   uniform float logDepthBufFC;
+  uniform vec3 sunDirection;
 
   vec3 _ScreenToWorld(vec3 posS) {
 
@@ -408,7 +407,7 @@ export const scattering_shader = (function() {
 
 
     vec3 diffuse = texture2D(tDiffuse, vUv).xyz;
-    vec3 lightDir = normalize(vec3(1, 1, -1));
+    vec3 lightDir = normalize(sunDirection);
 
     // diffuse = _ApplyFog(diffuse, dist, height, posWS, cameraPosition, cameraDirection, lightDir);
 
@@ -428,14 +427,13 @@ export const scattering_shader = (function() {
     out_FragColor.a = 1.0;
   }
   `;
-  
 
   const _Shader = {
     uniforms: {
-      "tDiffuse": { value: null },
-      "tDepth": { value: null },
-      "cameraNear": { value: 0.0 },
-      "cameraFar": { value: 0.0 },
+      tDiffuse: { value: null },
+      tDepth: { value: null },
+      cameraNear: { value: 0.0 },
+      cameraFar: { value: 0.0 },
     },
     vertexShader: _VS,
     fragmentShader: _PS,
@@ -447,4 +445,3 @@ export const scattering_shader = (function() {
     PS: _PS,
   };
 })();
-  

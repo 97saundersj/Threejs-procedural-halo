@@ -12,5 +12,8 @@ export const terrain_constants = (function () {
 
     NOISE_HEIGHT: 2000.0,
     NOISE_SCALE: 18000.0,
+
+    // Centralized lighting constants
+    AMBIENT_LIGHT_INTENSITY: 0.01, // Minimal starlight for dark side
   };
 })();

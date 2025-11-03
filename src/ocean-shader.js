@@ -89,6 +89,8 @@ uniform float animationSpeed;
 uniform vec2 layer1Speed;
 uniform vec2 layer2Speed;
 uniform float normalIntensity;
+uniform vec3 sunDirection;
+uniform float ambientLightIntensity;
 
 in vec2 vUV;
 in vec3 vNormal;
@@ -101,7 +103,7 @@ out vec4 out_FragColor;
 #define saturate(a) clamp( a, 0.0, 1.0 )
 
 void main() {
-  vec3 sunDir = normalize(vec3(1, 1, -1));
+  vec3 sunDir = normalize(sunDirection);
   vec3 worldNormal = normalize(vNormal);
   
   // Sample normal map using world-space UV coordinates with time-based animation
@@ -166,7 +168,7 @@ void main() {
   
   // Lighting
   float NdotL = max(dot(perturbedNormal, sunDir), 0.0);
-  vec3 diffuse = waterColor * (0.3 + 0.7 * NdotL);
+  vec3 diffuse = waterColor * (ambientLightIntensity + (1.0 - ambientLightIntensity) * NdotL);
   
   // Add specular highlight
   vec3 finalColor = diffuse + vec3(1.0) * specular * 0.5;
@@ -183,7 +185,7 @@ void main() {
   // Bit of a hack to remove lighting on dark side of planet
   vec3 planetNormal = normalize(vWorldPos);
   float planetLighting = saturate(dot(planetNormal, sunDir));
-  finalColor *= 0.3 + 0.7 * planetLighting;
+  finalColor *= ambientLightIntensity + (1.0 - ambientLightIntensity) * planetLighting;
   
   // Ocean visibility - keep it simple and visible
   float alpha = 0.8;

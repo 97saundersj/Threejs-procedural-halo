@@ -106,6 +106,40 @@ class ProceduralTerrain_Demo extends game.Game {
     this._totalTime = 0;
 
     this._LoadBackground();
+    
+    // Initialize sun direction on all systems
+    this._UpdateSunDirection();
+  }
+
+  _UpdateSunDirection() {
+    // Update sun direction across all systems for consistent planetary lighting
+    const sunEntity = this._entities["_sun"];
+    if (sunEntity && sunEntity.entity && sunEntity.entity.SunDirection) {
+      const sunDirection = sunEntity.entity.SunDirection;
+      
+      // Update graphics (scene light and scattering shader)
+      if (this.graphics_ && this.graphics_.UpdateSunDirection) {
+        this.graphics_.UpdateSunDirection(sunDirection);
+      }
+      
+      // Update terrain shader
+      const terrainEntity = this._entities["_terrain"];
+      if (terrainEntity && terrainEntity.entity && terrainEntity.entity.UpdateSunDirection) {
+        terrainEntity.entity.UpdateSunDirection(sunDirection);
+      }
+      
+      // Update ocean shader
+      const oceanEntity = this._entities["_ocean"];
+      if (oceanEntity && oceanEntity.entity && oceanEntity.entity.UpdateSunDirection) {
+        oceanEntity.entity.UpdateSunDirection(sunDirection);
+      }
+      
+      // Update ringworld terrain shader
+      const ringworldEntity = this._entities["_ringworld"];
+      if (ringworldEntity && ringworldEntity.entity && ringworldEntity.entity.UpdateSunDirection) {
+        ringworldEntity.entity.UpdateSunDirection(sunDirection);
+      }
+    }
   }
 
   _CreateGUI() {
@@ -133,7 +167,10 @@ class ProceduralTerrain_Demo extends game.Game {
     this.graphics_._scene.background = texture;
   }
 
-  _OnStep(timeInSeconds) {}
+  _OnStep(timeInSeconds) {
+    // Update sun direction across all systems every frame for consistency
+    this._UpdateSunDirection();
+  }
 }
 
 function _Main() {

@@ -64,6 +64,12 @@ export const ocean = (function () {
           normalIntensity: {
             value: 3.0,
           },
+          sunDirection: {
+            value: new THREE.Vector3(1, 1, -1).normalize(),
+          },
+          ambientLightIntensity: {
+            value: terrain_constants.AMBIENT_LIGHT_INTENSITY,
+          },
         },
         vertexShader: ocean_shader.VS,
         fragmentShader: ocean_shader.PS,
@@ -404,6 +410,12 @@ export const ocean = (function () {
       }
 
       this._chunks = newOceanChunks;
+    }
+
+    UpdateSunDirection(sunDirection) {
+      if (this._material && this._material.uniforms.sunDirection) {
+        this._material.uniforms.sunDirection.value.copy(sunDirection);
+      }
     }
   }
 

@@ -9,12 +9,14 @@ export const sun = (function () {
 
     _Init(params) {
       // Calculate sun direction matching existing lighting setup
-      const sunDirection = new THREE.Vector3(1, 1, -1).normalize();
+      this._sunDirection = new THREE.Vector3(1, 1, -1).normalize();
       // Position sun at much greater distance
       const sunDistance = 80000000;
 
       // Position sun at fixed distant location
-      const sunPosition = sunDirection.clone().multiplyScalar(sunDistance);
+      const sunPosition = this._sunDirection
+        .clone()
+        .multiplyScalar(sunDistance);
 
       // Create sphere geometry for the sun
       // Radius scaled proportionally to maintain same apparent size
@@ -36,6 +38,10 @@ export const sun = (function () {
 
       // Add to scene
       params.scene.add(this._mesh);
+    }
+
+    get SunDirection() {
+      return this._sunDirection.clone();
     }
 
     Update(timeInSeconds) {

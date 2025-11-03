@@ -1,5 +1,4 @@
-export const terrain_shader = (function() {
-
+export const terrain_shader = (function () {
   const _VS = `#version 300 es
 
 precision highp float;
@@ -54,7 +53,6 @@ void main(){
   vFragDepth = 1.0 + gl_Position.w;
 }
   `;
-  
 
   const _PS = `#version 300 es
 
@@ -70,6 +68,8 @@ uniform mat4 modelMatrix;
 uniform mat4 modelViewMatrix;
 
 uniform float logDepthBufFC;
+uniform vec3 sunDirection;
+uniform float ambientLightIntensity;
 
 in vec2 vUV;
 in vec4 vColor;
@@ -105,15 +105,15 @@ vec4 _CalculateLighting(
 }
 
 vec4 _ComputeLighting(vec3 worldSpaceNormal, vec3 sunDir, vec3 viewDirection) {
-  // Hardcoded, whee!
+  // Realistic planetary lighting - single sun source only
   vec4 lighting;
   
+  // Primary sun lighting
   lighting += _CalculateLighting(
       sunDir, vec3(1.0, 1.0, 1.0), worldSpaceNormal, viewDirection);
-  lighting += _CalculateLighting(
-      vec3(0, 1, 0), vec3(0.25, 0.25, 0.25), worldSpaceNormal, viewDirection);
-
-  lighting += vec4(0.15, 0.15, 0.15, 0.0);
+  
+  // Minimal ambient for starlight on dark side
+  lighting += vec4(ambientLightIntensity, ambientLightIntensity, ambientLightIntensity, 0.0);
   
   return lighting;
 }
@@ -278,7 +278,7 @@ vec4 _TriplanarN(vec3 pos, vec3 normal, float texSlice, sampler2DArray tex) {
 void main() {
   vec3 worldPosition = vRepeatingCoords;
   vec3 eyeDirection = normalize(worldPosition - cameraPosition);
-  vec3 sunDir = normalize(vec3(1, 1, -1));
+  vec3 sunDir = normalize(sunDirection);
 
   float weightIndices[4] = float[4](vWeights1.x, vWeights1.y, vWeights1.z, vWeights1.w);
   float weightValues[4] = float[4](vWeights2.x, vWeights2.y, vWeights2.z, vWeights2.w);
@@ -326,10 +326,9 @@ void main() {
 }
 
   `;
-  
-    return {
-      VS: _VS,
-      PS: _PS,
-    };
-  })();
-  
+
+  return {
+    VS: _VS,
+    PS: _PS,
+  };
+})();
