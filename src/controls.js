@@ -124,6 +124,10 @@ void main() {
       };
       this._gamepadDeadZone = 0.1;
       this._gamepadStartButtonPressed = false;
+      this._gamepadTriggerStepDelay = 0;
+      this._gamepadTriggerStepInterval = 0.1; // Adjust acceleration every 0.1 seconds
+      this._lastLeftTrigger = null;
+      this._lastRightTrigger = null;
 
       this._camera = params.camera;
       this._camera.updateMatrixWorld(true);
@@ -563,16 +567,114 @@ void main() {
         camera.updateMatrixWorld(true);
       }
 
-      // Triggers or D-pad for up/down movement
-      // Left trigger (axes[4]) or D-pad up for move up
-      const leftTrigger = axes[4] || 0;
-      const dpadUp = buttons[12] && buttons[12].pressed;
-      this._move.up = leftTrigger > 0.1 || dpadUp;
+      // Triggers for acceleration adjustment
+      // Check both axes and buttons (different gamepads map triggers differently)
+      let leftTrigger = 0;
+      let rightTrigger = 0;
 
-      // Right trigger (axes[5]) or D-pad down for move down
-      const rightTrigger = axes[5] || 0;
+      // Try triggers as axes first (standard mapping: axes[4] = left, axes[5] = right)
+      if (axes.length > 4 && axes[4] !== undefined) {
+        // Handle both positive and negative values
+        leftTrigger = Math.abs(axes[4]);
+      }
+      if (axes.length > 5 && axes[5] !== undefined) {
+        rightTrigger = Math.abs(axes[5]);
+      }
+
+      // Also check if triggers are mapped as buttons (buttons[6] = left, buttons[7] = right)
+      if (buttons.length > 6 && buttons[6]) {
+        const buttonValue =
+          buttons[6].value !== undefined
+            ? buttons[6].value
+            : buttons[6].pressed
+            ? 1
+            : 0;
+        leftTrigger = Math.max(leftTrigger, buttonValue);
+      }
+      if (buttons.length > 7 && buttons[7]) {
+        const buttonValue =
+          buttons[7].value !== undefined
+            ? buttons[7].value
+            : buttons[7].pressed
+            ? 1
+            : 0;
+        rightTrigger = Math.max(rightTrigger, buttonValue);
+      }
+
+      // Normalize trigger values to 0-1 range
+      leftTrigger = Math.max(0, Math.min(1, leftTrigger));
+      rightTrigger = Math.max(0, Math.min(1, rightTrigger));
+
+      // D-pad for up/down movement
+      const dpadUp = buttons[12] && buttons[12].pressed;
       const dpadDown = buttons[13] && buttons[13].pressed;
-      this._move.down = rightTrigger > 0.1 || dpadDown;
+      this._move.up = dpadUp;
+      this._move.down = dpadDown;
+
+      // Adjust acceleration with triggers (step-based, similar to mouse wheel)
+      // Lower threshold to be more responsive (0.2 instead of 0.5)
+      const leftTriggerActive = leftTrigger > 0.2;
+      const rightTriggerActive = rightTrigger > 0.2;
+      const anyTriggerActive = leftTriggerActive || rightTriggerActive;
+
+      // Debug: log trigger values occasionally (first time or when changed)
+      if (
+        !this._lastLeftTrigger ||
+        Math.abs(this._lastLeftTrigger - leftTrigger) > 0.1 ||
+        !this._lastRightTrigger ||
+        Math.abs(this._lastRightTrigger - rightTrigger) > 0.1
+      ) {
+        if (leftTrigger > 0.1 || rightTrigger > 0.1) {
+          console.log(
+            `Triggers - Left: ${leftTrigger.toFixed(
+              2
+            )}, Right: ${rightTrigger.toFixed(2)}`
+          );
+        }
+        this._lastLeftTrigger = leftTrigger;
+        this._lastRightTrigger = rightTrigger;
+      }
+
+      if (anyTriggerActive) {
+        this._gamepadTriggerStepDelay += timeInSeconds;
+        if (this._gamepadTriggerStepDelay >= this._gamepadTriggerStepInterval) {
+          this._gamepadTriggerStepDelay = 0;
+
+          const step = 0.5;
+          let accelerationChange = 0;
+
+          if (leftTriggerActive && !rightTriggerActive) {
+            // Left trigger decreases acceleration
+            accelerationChange = -step;
+          } else if (rightTriggerActive && !leftTriggerActive) {
+            // Right trigger increases acceleration
+            accelerationChange = step;
+          }
+          // If both triggers are pressed, they cancel out (no change)
+
+          if (accelerationChange !== 0) {
+            const current = this._params.guiParams.camera.acceleration_x;
+            const next = Math.max(
+              this._minAcceleration,
+              Math.min(this._maxAcceleration, current + accelerationChange)
+            );
+
+            if (next !== current) {
+              this._params.guiParams.camera.acceleration_x = next;
+              this._acceleration.set(next, next, next);
+
+              if (this._speedController) {
+                this._speedController.updateDisplay();
+              }
+
+              console.log(`Acceleration adjusted: ${current} -> ${next}`);
+            }
+          }
+        }
+      } else {
+        // Reset delay when no triggers are pressed for better responsiveness
+        this._gamepadTriggerStepDelay = 0;
+      }
 
       // Shoulder buttons for roll (inverted)
       const leftShoulder = buttons[4] && buttons[4].pressed;

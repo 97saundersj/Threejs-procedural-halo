@@ -1,24 +1,22 @@
-import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.112.1/build/three.module.js';
-import Stats from 'https://cdn.jsdelivr.net/npm/three@0.112.1/examples/jsm/libs/stats.module.js';
-import {WEBGL} from 'https://cdn.jsdelivr.net/npm/three@0.112.1/examples/jsm/WebGL.js';
+import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.112.1/build/three.module.js";
+import Stats from "https://cdn.jsdelivr.net/npm/three@0.112.1/examples/jsm/libs/stats.module.js";
+import { WEBGL } from "https://cdn.jsdelivr.net/npm/three@0.112.1/examples/jsm/WebGL.js";
 
-import {RenderPass} from 'https://cdn.jsdelivr.net/npm/three@0.112.1/examples/jsm/postprocessing/RenderPass.js';
-import {ShaderPass} from 'https://cdn.jsdelivr.net/npm/three@0.112.1/examples/jsm/postprocessing/ShaderPass.js';
-import {CopyShader} from 'https://cdn.jsdelivr.net/npm/three@0.112.1/examples/jsm/shaders/CopyShader.js';
-import {FXAAShader} from 'https://cdn.jsdelivr.net/npm/three@0.112.1/examples/jsm/shaders/FXAAShader.js';
-import {EffectComposer} from 'https://cdn.jsdelivr.net/npm/three@0.112.1/examples/jsm/postprocessing/EffectComposer.js';
+import { RenderPass } from "https://cdn.jsdelivr.net/npm/three@0.112.1/examples/jsm/postprocessing/RenderPass.js";
+import { ShaderPass } from "https://cdn.jsdelivr.net/npm/three@0.112.1/examples/jsm/postprocessing/ShaderPass.js";
+import { CopyShader } from "https://cdn.jsdelivr.net/npm/three@0.112.1/examples/jsm/shaders/CopyShader.js";
+import { FXAAShader } from "https://cdn.jsdelivr.net/npm/three@0.112.1/examples/jsm/shaders/FXAAShader.js";
+import { EffectComposer } from "https://cdn.jsdelivr.net/npm/three@0.112.1/examples/jsm/postprocessing/EffectComposer.js";
 
-import {scattering_shader} from './scattering-shader.js';
+import { scattering_shader } from "./scattering-shader.js";
 
-
-export const graphics = (function() {
-
+export const graphics = (function () {
   function _GetImageData(image) {
-    const canvas = document.createElement('canvas');
+    const canvas = document.createElement("canvas");
     canvas.width = image.width;
     canvas.height = image.height;
 
-    const context = canvas.getContext( '2d' );
+    const context = canvas.getContext("2d");
     context.drawImage(image, 0, 0);
 
     return context.getImageData(0, 0, image.width, image.height);
@@ -28,24 +26,23 @@ export const graphics = (function() {
     const position = (x + imagedata.width * y) * 4;
     const data = imagedata.data;
     return {
-        r: data[position],
-        g: data[position + 1],
-        b: data[position + 2],
-        a: data[position + 3]
+      r: data[position],
+      g: data[position + 1],
+      b: data[position + 2],
+      a: data[position + 3],
     };
   }
 
   class _Graphics {
-    constructor(game) {
-    }
+    constructor(game) {}
 
     Initialize() {
       if (!WEBGL.isWebGL2Available()) {
         return false;
       }
 
-      const canvas = document.createElement('canvas');
-      const context = canvas.getContext('webgl2', {alpha: false});
+      const canvas = document.createElement("canvas");
+      const context = canvas.getContext("webgl2", { alpha: false });
 
       this._threejs = new THREE.WebGLRenderer({
         canvas: canvas,
@@ -57,15 +54,19 @@ export const graphics = (function() {
       this._threejs.setSize(window.innerWidth, window.innerHeight);
       this._threejs.autoClear = false;
 
-      const target = document.getElementById('target');
+      const target = document.getElementById("target");
       target.appendChild(this._threejs.domElement);
 
       this._stats = new Stats();
       // target.appendChild(this._stats.dom);
 
-      window.addEventListener('resize', () => {
-        this._OnWindowResize();
-      }, false);
+      window.addEventListener(
+        "resize",
+        () => {
+          this._OnWindowResize();
+        },
+        false
+      );
 
       const fov = 60;
       const aspect = 1920 / 1080;
@@ -96,7 +97,11 @@ export const graphics = (function() {
         generateMipmaps: false,
       };
 
-      this._target = new THREE.WebGLRenderTarget(window.innerWidth, window.innerHeight, params);
+      this._target = new THREE.WebGLRenderTarget(
+        window.innerWidth,
+        window.innerHeight,
+        params
+      );
       this._target.stencilBuffer = false;
       this._target.depthBuffer = true;
       this._target.depthTexture = new THREE.DepthTexture();
@@ -106,10 +111,10 @@ export const graphics = (function() {
 
       this._threejs.setRenderTarget(this._target);
 
-      const logDepthBufFC = 2.0 / ( Math.log(this._camera.far + 1.0) / Math.LN2);
+      const logDepthBufFC = 2.0 / (Math.log(this._camera.far + 1.0) / Math.LN2);
 
-      this._postCamera = new THREE.OrthographicCamera( - 1, 1, 1, - 1, 0, 1 );
-      this._depthPass = new THREE.ShaderMaterial( {
+      this._postCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+      this._depthPass = new THREE.ShaderMaterial({
         vertexShader: scattering_shader.VS,
         fragmentShader: scattering_shader.PS,
         uniforms: {
@@ -125,21 +130,20 @@ export const graphics = (function() {
           planetRadius: { value: null },
           atmosphereRadius: { value: null },
           logDepthBufFC: { value: logDepthBufFC },
-        }
-      } );
-      var postPlane = new THREE.PlaneBufferGeometry( 2, 2 );
-      var postQuad = new THREE.Mesh( postPlane, this._depthPass );
+        },
+      });
+      var postPlane = new THREE.PlaneBufferGeometry(2, 2);
+      var postQuad = new THREE.Mesh(postPlane, this._depthPass);
       this._postScene = new THREE.Scene();
-      this._postScene.add( postQuad );
+      this._postScene.add(postQuad);
 
       this._CreateLights();
 
       return true;
     }
 
-
     _CreateLights() {
-      let light = new THREE.DirectionalLight(0xFFFFFF, 1);
+      let light = new THREE.DirectionalLight(0xffffff, 1);
       light.position.set(100, 100, -100);
       light.target.position.set(0, 0, 0);
       light.castShadow = false;
@@ -163,7 +167,7 @@ export const graphics = (function() {
       light.castShadow = false;
       this._scene.add(light);
 
-      light = new THREE.AmbientLight(0xFFFFFF, 1.0);
+      light = new THREE.AmbientLight(0xffffff, 1.0);
       this._scene.add(light);
     }
 
@@ -190,12 +194,13 @@ export const graphics = (function() {
       this._threejs.render(this._scene, this._camera);
       //this._composer.render();
 
-      this._threejs.setRenderTarget( null );
+      this._threejs.setRenderTarget(null);
 
       const forward = new THREE.Vector3();
       this._camera.getWorldDirection(forward);
 
-      this._depthPass.uniforms.inverseProjection.value = this._camera.projectionMatrixInverse;
+      this._depthPass.uniforms.inverseProjection.value =
+        this._camera.projectionMatrixInverse;
       this._depthPass.uniforms.inverseView.value = this._camera.matrixWorld;
       this._depthPass.uniforms.tDiffuse.value = this._target.texture;
       this._depthPass.uniforms.tDepth.value = this._target.depthTexture;
@@ -203,10 +208,14 @@ export const graphics = (function() {
       this._depthPass.uniforms.cameraFar.value = this._camera.far;
       this._depthPass.uniforms.cameraPosition.value = this._camera.position;
       this._depthPass.uniforms.cameraForward.value = forward;
-      this._depthPass.uniforms.planetPosition.value = new THREE.Vector3(0, 0, 0);
+      this._depthPass.uniforms.planetPosition.value = new THREE.Vector3(
+        0,
+        0,
+        0
+      );
       this._depthPass.uniformsNeedUpdate = true;
 
-      this._threejs.render( this._postScene, this._postCamera );
+      this._threejs.render(this._postScene, this._postCamera);
 
       this._stats.update();
     }

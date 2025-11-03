@@ -3,6 +3,8 @@ import { GUI } from "https://cdn.jsdelivr.net/npm/three@0.112.1/examples/jsm/lib
 import { controls } from "./controls.js";
 import { game } from "./game.js";
 import { terrain } from "./terrain.js";
+import { ocean } from "./ocean.js";
+import { sun } from "./sun.js";
 import { terrain_constants } from "./terrain-constants.js";
 
 let _APP = null;
@@ -38,6 +40,25 @@ class ProceduralTerrain_Demo extends game.Game {
         game: this,
       }),
       1.0
+    );
+
+    this._AddEntity(
+      "_ocean",
+      new ocean.OceanChunkManager({
+        camera: this.graphics_.Camera,
+        scene: this.graphics_.Scene,
+        gui: this._gui,
+        guiParams: this._guiParams,
+      }),
+      1.5
+    );
+
+    this._AddEntity(
+      "_sun",
+      new sun.Sun({
+        scene: this.graphics_.Scene,
+      }),
+      0.5
     );
 
     this._AddEntity(
