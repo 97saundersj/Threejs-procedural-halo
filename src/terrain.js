@@ -354,6 +354,15 @@ export const terrain = (function () {
         }
       }
 
+      // Store metadata from new quadtree chunks before intersection
+      const newChunksMetadata = {};
+      for (let k in newTerrainChunks) {
+        newChunksMetadata[k] = {
+          bounds: newTerrainChunks[k].bounds,
+          transform: newTerrainChunks[k].transform,
+        };
+      }
+
       const intersection = utils.DictIntersection(
         this._chunks,
         newTerrainChunks
@@ -367,12 +376,22 @@ export const terrain = (function () {
 
       newTerrainChunks = intersection;
 
+      // Preserve bounds and transform for existing chunks from new quadtree data
+      for (let k in newTerrainChunks) {
+        if (newChunksMetadata[k]) {
+          newTerrainChunks[k].bounds = newChunksMetadata[k].bounds;
+          newTerrainChunks[k].transform = newChunksMetadata[k].transform;
+        }
+      }
+
       for (let k in difference) {
         const [xp, yp, zp] = difference[k].position;
 
         const offset = new THREE.Vector3(xp, yp, zp);
         newTerrainChunks[k] = {
           position: [xp, zp],
+          bounds: difference[k].bounds,
+          transform: difference[k].transform,
           chunk: this._CreateTerrainChunk(
             difference[k].group,
             difference[k].transform,
@@ -390,6 +409,10 @@ export const terrain = (function () {
       if (this._material && this._material.uniforms.sunDirection) {
         this._material.uniforms.sunDirection.value.copy(sunDirection);
       }
+    }
+
+    GetChunks() {
+      return this._chunks;
     }
   }
 

@@ -5,6 +5,7 @@ import { game } from "./game.js";
 import { terrain } from "./terrain.js";
 import { ocean } from "./ocean.js";
 import { sun } from "./sun.js";
+import { scenery_controller } from "./scenery-controller.js";
 import { terrain_constants } from "./terrain-constants.js";
 
 let _APP = null;
@@ -29,18 +30,15 @@ class ProceduralTerrain_Demo extends game.Game {
       0.38360921119467495
     );
 
-    this._AddEntity(
-      "_terrain",
-      new terrain.TerrainChunkManager({
-        camera: this.graphics_.Camera,
-        scene: this.graphics_.Scene,
-        scattering: this.graphics_._depthPass,
-        gui: this._gui,
-        guiParams: this._guiParams,
-        game: this,
-      }),
-      1.0
-    );
+    const terrainManager = new terrain.TerrainChunkManager({
+      camera: this.graphics_.Camera,
+      scene: this.graphics_.Scene,
+      scattering: this.graphics_._depthPass,
+      gui: this._gui,
+      guiParams: this._guiParams,
+      game: this,
+    });
+    this._AddEntity("_terrain", terrainManager, 1.0);
 
     this._AddEntity(
       "_ocean",
@@ -61,26 +59,38 @@ class ProceduralTerrain_Demo extends game.Game {
       0.5
     );
 
+    const ringworldManager = new terrain.TerrainChunkManager({
+      camera: this.graphics_.Camera,
+      scene: this.graphics_.Scene,
+      scattering: null,
+      gui: null,
+      guiParams: {},
+      game: this,
+      radius: terrain_constants.RING_MAJOR_RADIUS,
+      center: new THREE.Vector3(terrain_constants.RING_OFFSET, 0, 0),
+      shape: "ring",
+      shapeParams: {
+        latCutoff: terrain_constants.RING_LATITUDE_CUTOFF,
+        latFade: terrain_constants.RING_LATITUDE_FADE,
+        dropExponent: terrain_constants.RING_DROP_EXPONENT,
+        cullLatitude: terrain_constants.RING_CULL_LATITUDE,
+      },
+    });
+    this._AddEntity("_ringworld", ringworldManager, 1.0);
+
+    // Add scenery controller
+    // Must be added after terrain managers are created
     this._AddEntity(
-      "_ringworld",
-      new terrain.TerrainChunkManager({
+      "_scenery",
+      new scenery_controller.SceneryController({
         camera: this.graphics_.Camera,
         scene: this.graphics_.Scene,
-        scattering: null,
-        gui: null,
-        guiParams: {},
-        game: this,
-        radius: terrain_constants.RING_MAJOR_RADIUS,
-        center: new THREE.Vector3(terrain_constants.RING_OFFSET, 0, 0),
-        shape: "ring",
-        shapeParams: {
-          latCutoff: terrain_constants.RING_LATITUDE_CUTOFF,
-          latFade: terrain_constants.RING_LATITUDE_FADE,
-          dropExponent: terrain_constants.RING_DROP_EXPONENT,
-          cullLatitude: terrain_constants.RING_CULL_LATITUDE,
-        },
+        terrainManager: terrainManager,
+        radius: terrain_constants.PLANET_RADIUS,
+        center: new THREE.Vector3(0, 0, 0),
+        shape: "planet",
       }),
-      1.0
+      1.5
     );
 
     this._AddEntity(
@@ -106,7 +116,7 @@ class ProceduralTerrain_Demo extends game.Game {
     this._totalTime = 0;
 
     this._LoadBackground();
-    
+
     // Initialize sun direction on all systems
     this._UpdateSunDirection();
   }
@@ -116,27 +126,39 @@ class ProceduralTerrain_Demo extends game.Game {
     const sunEntity = this._entities["_sun"];
     if (sunEntity && sunEntity.entity && sunEntity.entity.SunDirection) {
       const sunDirection = sunEntity.entity.SunDirection;
-      
+
       // Update graphics (scene light and scattering shader)
       if (this.graphics_ && this.graphics_.UpdateSunDirection) {
         this.graphics_.UpdateSunDirection(sunDirection);
       }
-      
+
       // Update terrain shader
       const terrainEntity = this._entities["_terrain"];
-      if (terrainEntity && terrainEntity.entity && terrainEntity.entity.UpdateSunDirection) {
+      if (
+        terrainEntity &&
+        terrainEntity.entity &&
+        terrainEntity.entity.UpdateSunDirection
+      ) {
         terrainEntity.entity.UpdateSunDirection(sunDirection);
       }
-      
+
       // Update ocean shader
       const oceanEntity = this._entities["_ocean"];
-      if (oceanEntity && oceanEntity.entity && oceanEntity.entity.UpdateSunDirection) {
+      if (
+        oceanEntity &&
+        oceanEntity.entity &&
+        oceanEntity.entity.UpdateSunDirection
+      ) {
         oceanEntity.entity.UpdateSunDirection(sunDirection);
       }
-      
+
       // Update ringworld terrain shader
       const ringworldEntity = this._entities["_ringworld"];
-      if (ringworldEntity && ringworldEntity.entity && ringworldEntity.entity.UpdateSunDirection) {
+      if (
+        ringworldEntity &&
+        ringworldEntity.entity &&
+        ringworldEntity.entity.UpdateSunDirection
+      ) {
         ringworldEntity.entity.UpdateSunDirection(sunDirection);
       }
     }
@@ -170,6 +192,23 @@ class ProceduralTerrain_Demo extends game.Game {
   _OnStep(timeInSeconds) {
     // Update sun direction across all systems every frame for consistency
     this._UpdateSunDirection();
+    
+    // Update acceleration display
+    this._UpdateAccelerationDisplay();
+  }
+
+  _UpdateAccelerationDisplay() {
+    const accelerationDisplay = document.getElementById("acceleration-display");
+    if (accelerationDisplay && this._guiParams && this._guiParams.camera) {
+      const acceleration = this._guiParams.camera.acceleration_x;
+      
+      // Calculate percentage based on min/max acceleration (4.0 to 24.0)
+      const minAcc = 4.0;
+      const maxAcc = 24.0;
+      const percent = ((acceleration - minAcc) / (maxAcc - minAcc)) * 100;
+      
+      accelerationDisplay.textContent = `Acceleration: ${Math.round(percent)}%`;
+    }
   }
 }
 
