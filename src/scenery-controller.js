@@ -86,6 +86,18 @@ void main() {
       // Maximum distance from camera to place scenery
       this._maxSceneryDistance = 1000.0; // Only place scenery within this distance
 
+      // Number of trees to spawn per chunk (scaled by chunk size)
+      this._treesPerChunk = 100; // Base number of trees per chunk
+
+      // Limit trees spawned per frame to avoid lag
+      this._maxTreesPerFrame = 1; // Limit to prevent frame drops
+
+      // Track which chunks have already spawned trees to avoid re-spawning
+      this._processedChunks = new Set();
+
+      // Track tree spawn progress per chunk (how many trees have been attempted)
+      this._chunkSpawnProgress = new Map(); // key -> number of trees attempted
+
       // Initialize noise for height calculation
       const noiseParams = {
         octaves: 13,
@@ -321,89 +333,165 @@ void main() {
       for (const key in chunks) {
         const chunk = chunks[key];
 
-        // Calculate world center from chunk bounds
-        const center = new THREE.Vector3();
-        chunk.bounds.getCenter(center);
+        // Calculate chunk size from bounds (size property may not be preserved in stored chunks)
+        const dimensions = new THREE.Vector3();
+        chunk.bounds.getSize(dimensions);
+        const chunkSize = dimensions.x; // Use X dimension as chunk size
 
-        // Apply transform to get world space position
-        center.applyMatrix4(chunk.transform);
+        // Only spawn scenery at much lower LOD levels (large chunks, far before highest detail)
+        // Skip chunks that are at or near the highest LOD (minimum size) - only spawn on much larger chunks
+        const minSize = terrain_constants.QT_MIN_CELL_SIZE;
+        // Only spawn on chunks that are at least 10x the minimum size to ensure we're at much lower LOD
+        // This means chunks must be >= 250 units (10 * 25) to spawn scenery
+        const lodThreshold = minSize * 20.0;
+        if (chunkSize < lodThreshold) {
+          continue; // Skip chunks that are at or near highest LOD (too small - skip high detail chunks)
+        }
 
-        // Normalize to sphere surface and scale by radius
-        center.normalize();
-        center.multiplyScalar(this._radius);
+        // Calculate chunk bounds in world space for random tree placement
+        const chunkCenter = new THREE.Vector3();
+        chunk.bounds.getCenter(chunkCenter);
 
-        // Round to grid FIRST to get stable position
-        const gridX =
-          Math.round(center.x / this._sceneryGridSize) * this._sceneryGridSize;
-        const gridY =
-          Math.round(center.y / this._sceneryGridSize) * this._sceneryGridSize;
-        const gridZ =
-          Math.round(center.z / this._sceneryGridSize) * this._sceneryGridSize;
+        // Apply transform to get world space center for distance check
+        const worldCenter = chunkCenter.clone();
+        worldCenter.applyMatrix4(chunk.transform);
+        worldCenter.normalize();
+        worldCenter.multiplyScalar(this._radius);
 
-        // Create stable grid position
-        const gridPosition = new THREE.Vector3(gridX, gridY, gridZ);
-
-        // Normalize grid position back to sphere surface for height calculation
-        gridPosition.normalize();
-        gridPosition.multiplyScalar(this._radius);
-
-        // Get terrain height at the stable grid position (for positioning the tree)
-        const terrainPosition = this._GetTerrainHeight(gridPosition);
-
-        // Calculate distance from camera to scenery position
-        const distanceToCamera = cameraPosition.distanceTo(terrainPosition);
-
-        // Only place scenery if within max distance
-        if (distanceToCamera > this._maxSceneryDistance) {
+        // Early distance check - skip chunk if too far from camera
+        const distanceToChunkCenter = cameraPosition.distanceTo(worldCenter);
+        if (distanceToChunkCenter > this._maxSceneryDistance) {
           continue; // Skip this chunk - too far from camera
         }
 
-        // Use stable world position key (grid-based) before height calculation
-        // This ensures the key is deterministic regardless of terrain height
-        const worldPosKey = `${gridX},${gridY},${gridZ}`;
-        activeWorldPositions.add(worldPosKey);
+        // Check if this chunk has already been fully processed
+        if (this._processedChunks.has(key)) {
+          // Chunk fully processed - skip spawning
+          continue;
+        }
 
-        // Only create scenery if it doesn't already exist at this world position
-        if (!this._sceneryByWorldPos.has(worldPosKey)) {
-          // Create tree at this stable world position (grid-aligned)
-          const tree = this._CreateTree(terrainPosition);
-          this._sceneryByWorldPos.set(worldPosKey, tree);
+        // Calculate number of trees based on chunk size (more trees for larger chunks)
+        const numTrees = Math.floor(
+          this._treesPerChunk * (chunkSize / (minSize * 20.0))
+        );
 
-          // Also track by chunk key for cleanup
-          if (!this._debugCubes.has(key)) {
-            this._debugCubes.set(key, tree);
+        // Get spawn progress for this chunk (how many trees we've already attempted)
+        const treesAttemptedSoFar = this._chunkSpawnProgress.get(key) || 0;
+
+        // Use a seed based on chunk position for deterministic random placement
+        const chunkSeed = `${chunkCenter.x},${chunkCenter.y},${chunkCenter.z}`;
+        let seedValue = 0;
+        for (let i = 0; i < chunkSeed.length; i++) {
+          seedValue = (seedValue << 5) - seedValue + chunkSeed.charCodeAt(i);
+          seedValue = seedValue & seedValue; // Convert to 32bit integer
+        }
+
+        // Simple seeded random function for deterministic placement
+        let seed = Math.abs(seedValue);
+        const seededRandom = () => {
+          seed = (seed * 9301 + 49297) % 233280;
+          return seed / 233280;
+        };
+
+        // Advance seeded random to where we left off (skip already attempted trees)
+        for (let i = 0; i < treesAttemptedSoFar; i++) {
+          seededRandom();
+        }
+
+        // Limit trees spawned per frame to avoid lag
+        let treesSpawnedThisFrame = 0;
+        let treesAttemptedThisFrame = 0;
+
+        // Spawn multiple trees randomly across the chunk, starting from where we left off
+        for (
+          let i = treesAttemptedSoFar;
+          i < numTrees && treesSpawnedThisFrame < this._maxTreesPerFrame;
+          i++
+        ) {
+          treesAttemptedThisFrame++;
+          // Generate random position within chunk bounds (in local space)
+          const localX = (seededRandom() - 0.5) * chunkSize;
+          const localY = (seededRandom() - 0.5) * chunkSize;
+          const localZ = 0; // Chunk is on a plane
+
+          // Create local position
+          const localPos = new THREE.Vector3(localX, localY, localZ);
+          localPos.add(chunkCenter);
+
+          // Transform to world space
+          const worldPos = localPos.clone();
+          worldPos.applyMatrix4(chunk.transform);
+
+          // Normalize to sphere surface and scale by radius
+          worldPos.normalize();
+          worldPos.multiplyScalar(this._radius);
+
+          // Round to grid for stable position key
+          const gridX =
+            Math.round(worldPos.x / this._sceneryGridSize) *
+            this._sceneryGridSize;
+          const gridY =
+            Math.round(worldPos.y / this._sceneryGridSize) *
+            this._sceneryGridSize;
+          const gridZ =
+            Math.round(worldPos.z / this._sceneryGridSize) *
+            this._sceneryGridSize;
+
+          // Create stable grid position key
+          const worldPosKey = `${gridX},${gridY},${gridZ}`;
+
+          // Check if scenery already exists at this position
+          if (this._sceneryByWorldPos.has(worldPosKey)) {
+            activeWorldPositions.add(worldPosKey);
+            continue; // Tree already exists at this position
           }
 
-          // Initialize object list for this node if it doesn't exist
+          // Calculate distance from camera
+          const distanceToCamera = cameraPosition.distanceTo(worldPos);
+
+          // Only place scenery if within max distance
+          if (distanceToCamera > this._maxSceneryDistance) {
+            continue; // Skip this tree - too far from camera
+          }
+
+          // Get terrain height at this position
+          const terrainPosition = this._GetTerrainHeight(worldPos);
+
+          // Create tree at this position
+          const tree = this._CreateTree(terrainPosition);
+          this._sceneryByWorldPos.set(worldPosKey, tree);
+          activeWorldPositions.add(worldPosKey);
+          treesSpawnedThisFrame++;
+
+          // Track by chunk key for cleanup
           if (!this._objectsByNode.has(key)) {
             this._objectsByNode.set(key, []);
           }
-        } else {
-          // Scenery already exists at this world position, just track the chunk key
-          const existingTree = this._sceneryByWorldPos.get(worldPosKey);
-          if (!this._debugCubes.has(key)) {
-            this._debugCubes.set(key, existingTree);
-          }
+        }
+
+        // Update spawn progress for this chunk
+        const totalAttempted = treesAttemptedSoFar + treesAttemptedThisFrame;
+        this._chunkSpawnProgress.set(key, totalAttempted);
+
+        // Mark chunk as fully processed if we've attempted all trees
+        if (totalAttempted >= numTrees) {
+          this._processedChunks.add(key);
         }
       }
 
-      // Clean up scenery for world positions that no longer have any active chunks
-      // Also remove scenery that's too far from camera
+      // Clean up scenery that's too far from camera
+      // Note: We don't remove scenery just because chunks subdivide - scenery persists by world position
+      // Only remove if it's too far from camera
       const worldPosToRemove = [];
       for (const worldPosKey of this._sceneryByWorldPos.keys()) {
-        const shouldRemove = !activeWorldPositions.has(worldPosKey);
-
-        // Also check distance if scenery exists but is now too far away
-        if (!shouldRemove) {
-          const tree = this._sceneryByWorldPos.get(worldPosKey);
-          if (tree) {
-            const distanceToCamera = cameraPosition.distanceTo(tree.position);
-            if (distanceToCamera > this._maxSceneryDistance) {
-              worldPosToRemove.push(worldPosKey);
-            }
+        const tree = this._sceneryByWorldPos.get(worldPosKey);
+        if (tree) {
+          const distanceToCamera = cameraPosition.distanceTo(tree.position);
+          // Only remove scenery if it's too far from camera
+          // Don't remove based on activeWorldPositions - scenery should persist even when chunks subdivide
+          if (distanceToCamera > this._maxSceneryDistance) {
+            worldPosToRemove.push(worldPosKey);
           }
-        } else {
-          worldPosToRemove.push(worldPosKey);
         }
       }
 
@@ -429,6 +517,20 @@ void main() {
           // Only remove object list, not the tree (it's managed by world position)
           this._objectsByNode.delete(nodeKey);
           this._debugCubes.delete(nodeKey);
+        }
+      }
+
+      // Clean up processed chunks that no longer exist
+      for (const chunkKey of this._processedChunks) {
+        if (!currentChunks.has(chunkKey)) {
+          this._processedChunks.delete(chunkKey);
+        }
+      }
+
+      // Clean up spawn progress for chunks that no longer exist
+      for (const chunkKey of this._chunkSpawnProgress.keys()) {
+        if (!currentChunks.has(chunkKey)) {
+          this._chunkSpawnProgress.delete(chunkKey);
         }
       }
     }

@@ -114,6 +114,11 @@ class ProceduralTerrain_Demo extends game.Game {
     // }), 0.0);
 
     this._totalTime = 0;
+    
+    // FPS tracking
+    this._fps = 0;
+    this._fpsTime = 0;
+    this._fpsFrames = 0;
 
     this._LoadBackground();
 
@@ -193,8 +198,28 @@ class ProceduralTerrain_Demo extends game.Game {
     // Update sun direction across all systems every frame for consistency
     this._UpdateSunDirection();
     
+    // Update FPS counter
+    this._UpdateFPS(timeInSeconds);
+    
     // Update acceleration display
     this._UpdateAccelerationDisplay();
+  }
+
+  _UpdateFPS(timeInSeconds) {
+    this._fpsTime += timeInSeconds;
+    this._fpsFrames++;
+    
+    // Update FPS every second
+    if (this._fpsTime >= 1.0) {
+      this._fps = this._fpsFrames / this._fpsTime;
+      this._fpsTime = 0;
+      this._fpsFrames = 0;
+      
+      const fpsDisplay = document.getElementById("fps-display");
+      if (fpsDisplay) {
+        fpsDisplay.textContent = `FPS: ${Math.round(this._fps)}`;
+      }
+    }
   }
 
   _UpdateAccelerationDisplay() {
