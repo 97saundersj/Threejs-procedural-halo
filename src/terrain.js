@@ -414,6 +414,13 @@ export const terrain = (function () {
     GetChunks() {
       return this._chunks;
     }
+
+    IsReady() {
+      // Terrain is ready when:
+      // 1. Builder is not busy (no chunks being built)
+      // 2. There are chunks available (initial chunks have been generated)
+      return !this._builder.Busy && Object.keys(this._chunks).length > 0;
+    }
   }
 
   return {

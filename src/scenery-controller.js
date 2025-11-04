@@ -9,10 +9,24 @@ export const scenery_controller = (function () {
   const TREE_TRUNK_RADIUS = 0.5;
   const TREE_FOLIAGE_RADIUS = 3.0;
   const TREE_FOLIAGE_HEIGHT = 6.0;
+  const TREE_MIN_SCALE = 0.7;
+  const TREE_MAX_SCALE = 1.4;
 
   // Tree colors
   const TREE_TRUNK_COLOR = 0x8b4513; // Brown
   const TREE_FOLIAGE_COLOR = 0x228b22; // Forest green
+
+  // Rock dimensions
+  const ROCK_MIN_SCALE = 0.4;
+  const ROCK_MAX_SCALE = 2.5;
+  const ROCK_COLOR = 0x696969; // Dim gray
+
+  // Bush dimensions
+  const BUSH_RADIUS = 1.5;
+  const BUSH_HEIGHT = 1.0;
+  const BUSH_MIN_SCALE = 0.6;
+  const BUSH_MAX_SCALE = 1.5;
+  const BUSH_COLOR = 0x2d5016; // Dark green
 
   // Shader code for tree materials (same as debug cube shader)
   const TREE_VS = `#version 300 es
@@ -52,7 +66,6 @@ void main() {
       },
       vertexShader: TREE_VS,
       fragmentShader: TREE_FS,
-      glslVersion: THREE.GLSL3,
     });
   }
 
@@ -80,17 +93,23 @@ void main() {
       // This ensures scenery doesn't move when chunks subdivide
       this._sceneryByWorldPos = new Map();
 
+      // Track scenery type (tree, rock, bush) for each position
+      this._sceneryTypeByWorldPos = new Map();
+
       // Grid size for scenery placement (scenery only placed at fixed intervals)
       this._sceneryGridSize = 15.0; // Smaller = denser scenery (reduced from 250.0)
 
       // Maximum distance from camera to place scenery
       this._maxSceneryDistance = 1000.0; // Only place scenery within this distance
 
-      // Number of trees to spawn per chunk (scaled by chunk size)
-      this._treesPerChunk = 100; // Base number of trees per chunk
+      // Number of scenery objects to spawn per chunk (scaled by chunk size)
+      this._sceneryPerChunk = 100; // Base number of scenery objects per chunk
+      this._treeRatio = 0.6; // 60% trees
+      this._rockRatio = 0.25; // 25% rocks
+      this._bushRatio = 0.15; // 15% bushes
 
-      // Limit trees spawned per frame to avoid lag
-      this._maxTreesPerFrame = 1; // Limit to prevent frame drops
+      // Limit scenery spawned per frame to avoid lag
+      this._maxSceneryPerFrame = 1; // Limit to prevent frame drops
 
       // Track which chunks have already spawned trees to avoid re-spawning
       this._processedChunks = new Set();
@@ -128,11 +147,15 @@ void main() {
       // Create a group to hold the tree parts
       const tree = new THREE.Group();
 
+      // Random scale for variety
+      const treeScale =
+        TREE_MIN_SCALE + Math.random() * (TREE_MAX_SCALE - TREE_MIN_SCALE);
+
       // Create trunk (brown cylinder) with shader material
       const trunkGeometry = new THREE.CylinderGeometry(
-        TREE_TRUNK_RADIUS,
-        TREE_TRUNK_RADIUS,
-        TREE_TRUNK_HEIGHT,
+        TREE_TRUNK_RADIUS * treeScale,
+        TREE_TRUNK_RADIUS * treeScale,
+        TREE_TRUNK_HEIGHT * treeScale,
         8
       );
       const trunkMaterial = _CreateTreeMaterial(
@@ -140,14 +163,14 @@ void main() {
         TREE_TRUNK_COLOR
       );
       const trunk = new THREE.Mesh(trunkGeometry, trunkMaterial);
-      trunk.position.y = TREE_TRUNK_HEIGHT / 2;
+      trunk.position.y = (TREE_TRUNK_HEIGHT * treeScale) / 2;
       trunk.castShadow = false;
       trunk.receiveShadow = false;
 
       // Create foliage (green cone) with shader material
       const foliageGeometry = new THREE.ConeGeometry(
-        TREE_FOLIAGE_RADIUS,
-        TREE_FOLIAGE_HEIGHT,
+        TREE_FOLIAGE_RADIUS * treeScale,
+        TREE_FOLIAGE_HEIGHT * treeScale,
         8
       );
       const foliageMaterial = _CreateTreeMaterial(
@@ -155,7 +178,8 @@ void main() {
         TREE_FOLIAGE_COLOR
       );
       const foliage = new THREE.Mesh(foliageGeometry, foliageMaterial);
-      foliage.position.y = TREE_TRUNK_HEIGHT + TREE_FOLIAGE_HEIGHT / 2;
+      foliage.position.y =
+        TREE_TRUNK_HEIGHT * treeScale + (TREE_FOLIAGE_HEIGHT * treeScale) / 2;
       foliage.castShadow = true;
       foliage.receiveShadow = true;
 
@@ -207,13 +231,146 @@ void main() {
       return tree;
     }
 
-    _RemoveTree(tree) {
-      if (tree) {
+    _CreateRock(worldPosition) {
+      // Create a group to hold the rock parts
+      const rock = new THREE.Group();
+
+      // Random scale for variety
+      const scale =
+        ROCK_MIN_SCALE + Math.random() * (ROCK_MAX_SCALE - ROCK_MIN_SCALE);
+
+      // Create rock using an icosahedron for a more natural shape
+      const rockGeometry = new THREE.IcosahedronGeometry(scale, 0);
+      const rockMaterial = _CreateTreeMaterial(this._logDepthBufFC, ROCK_COLOR);
+
+      // Add some random distortion for more natural look
+      if (!rockGeometry.attributes) {
+        console.warn("Rock geometry missing attributes object", rockGeometry);
+      } else if (!rockGeometry.attributes.position) {
+        console.warn(
+          "Rock geometry missing position attribute",
+          rockGeometry.attributes
+        );
+      } else {
+        const positions = rockGeometry.attributes.position;
+        const positionArray = positions.array;
+        for (let i = 0; i < positionArray.length; i += 3) {
+          const noise = (Math.random() - 0.5) * 0.3;
+          positionArray[i] *= 1 + noise; // x
+          positionArray[i + 1] *= 1 + noise; // y
+          positionArray[i + 2] *= 1 + noise; // z
+        }
+        positions.needsUpdate = true;
+        rockGeometry.computeVertexNormals();
+      }
+
+      const rockMesh = new THREE.Mesh(rockGeometry, rockMaterial);
+      rockMesh.castShadow = true;
+      rockMesh.receiveShadow = true;
+
+      rock.add(rockMesh);
+
+      // Position the rock at world position
+      rock.position.copy(worldPosition);
+
+      // Calculate direction from planet center to rock position (radial outward = surface normal)
+      const direction = new THREE.Vector3();
+      direction.copy(worldPosition);
+      direction.sub(this._center);
+      direction.normalize();
+
+      // Align rock's Y-axis with the radial direction
+      const up = new THREE.Vector3(0, 1, 0);
+      const dot = up.dot(direction);
+
+      if (Math.abs(dot) > 0.9999) {
+        if (dot < 0) {
+          rock.rotation.x = Math.PI;
+        }
+      } else {
+        const axis = new THREE.Vector3();
+        axis.crossVectors(up, direction);
+        axis.normalize();
+        const angle = Math.acos(dot);
+        rock.quaternion.setFromAxisAngle(axis, angle);
+      }
+
+      // Add random rotation around the radial axis for variation
+      const randomRotation = Math.random() * Math.PI * 2;
+      rock.rotateOnWorldAxis(direction, randomRotation);
+
+      // Add rock to scene
+      this._scene.add(rock);
+
+      return rock;
+    }
+
+    _CreateBush(worldPosition) {
+      // Create a group to hold the bush parts
+      const bush = new THREE.Group();
+
+      // Random scale for variety
+      const bushScale =
+        BUSH_MIN_SCALE + Math.random() * (BUSH_MAX_SCALE - BUSH_MIN_SCALE);
+
+      // Create bush using a sphere for the foliage
+      const bushGeometry = new THREE.SphereGeometry(
+        BUSH_RADIUS * bushScale,
+        8,
+        6
+      );
+      // Scale to make it more oval/ground-hugging
+      bushGeometry.scale(1, BUSH_HEIGHT / BUSH_RADIUS, 1);
+      const bushMaterial = _CreateTreeMaterial(this._logDepthBufFC, BUSH_COLOR);
+      const bushMesh = new THREE.Mesh(bushGeometry, bushMaterial);
+      bushMesh.position.y = BUSH_HEIGHT * bushScale;
+      bushMesh.castShadow = true;
+      bushMesh.receiveShadow = true;
+
+      bush.add(bushMesh);
+
+      // Position the bush at world position
+      bush.position.copy(worldPosition);
+
+      // Calculate direction from planet center to bush position (radial outward = surface normal)
+      const direction = new THREE.Vector3();
+      direction.copy(worldPosition);
+      direction.sub(this._center);
+      direction.normalize();
+
+      // Align bush's Y-axis with the radial direction
+      const up = new THREE.Vector3(0, 1, 0);
+      const dot = up.dot(direction);
+
+      if (Math.abs(dot) > 0.9999) {
+        if (dot < 0) {
+          bush.rotation.x = Math.PI;
+        }
+      } else {
+        const axis = new THREE.Vector3();
+        axis.crossVectors(up, direction);
+        axis.normalize();
+        const angle = Math.acos(dot);
+        bush.quaternion.setFromAxisAngle(axis, angle);
+      }
+
+      // Add random rotation around the radial axis for variation
+      const randomRotation = Math.random() * Math.PI * 2;
+      bush.rotateOnWorldAxis(direction, randomRotation);
+
+      // Add bush to scene
+      this._scene.add(bush);
+
+      return bush;
+    }
+
+    _RemoveScenery(scenery) {
+      if (scenery) {
         // Remove from scene
-        this._scene.remove(tree);
+        this._scene.remove(scenery);
 
         // Dispose geometries and materials
-        tree.traverse((child) => {
+        scenery.traverse((child) => {
           if (child instanceof THREE.Mesh) {
             if (child.geometry) {
               child.geometry.dispose();
@@ -247,7 +404,7 @@ void main() {
       // Remove tree
       const tree = this._debugCubes.get(nodeKey);
       if (tree) {
-        this._RemoveTree(tree);
+        this._RemoveScenery(tree);
         this._debugCubes.delete(nodeKey);
       }
 
@@ -370,13 +527,13 @@ void main() {
           continue;
         }
 
-        // Calculate number of trees based on chunk size (more trees for larger chunks)
-        const numTrees = Math.floor(
-          this._treesPerChunk * (chunkSize / (minSize * 20.0))
+        // Calculate number of scenery objects based on chunk size (more objects for larger chunks)
+        const numScenery = Math.floor(
+          this._sceneryPerChunk * (chunkSize / (minSize * 20.0))
         );
 
-        // Get spawn progress for this chunk (how many trees we've already attempted)
-        const treesAttemptedSoFar = this._chunkSpawnProgress.get(key) || 0;
+        // Get spawn progress for this chunk (how many scenery objects we've already attempted)
+        const sceneryAttemptedSoFar = this._chunkSpawnProgress.get(key) || 0;
 
         // Use a seed based on chunk position for deterministic random placement
         const chunkSeed = `${chunkCenter.x},${chunkCenter.y},${chunkCenter.z}`;
@@ -393,22 +550,22 @@ void main() {
           return seed / 233280;
         };
 
-        // Advance seeded random to where we left off (skip already attempted trees)
-        for (let i = 0; i < treesAttemptedSoFar; i++) {
+        // Advance seeded random to where we left off (skip already attempted scenery)
+        for (let i = 0; i < sceneryAttemptedSoFar; i++) {
           seededRandom();
         }
 
-        // Limit trees spawned per frame to avoid lag
-        let treesSpawnedThisFrame = 0;
-        let treesAttemptedThisFrame = 0;
+        // Limit scenery spawned per frame to avoid lag
+        let scenerySpawnedThisFrame = 0;
+        let sceneryAttemptedThisFrame = 0;
 
-        // Spawn multiple trees randomly across the chunk, starting from where we left off
+        // Spawn multiple scenery objects randomly across the chunk, starting from where we left off
         for (
-          let i = treesAttemptedSoFar;
-          i < numTrees && treesSpawnedThisFrame < this._maxTreesPerFrame;
+          let i = sceneryAttemptedSoFar;
+          i < numScenery && scenerySpawnedThisFrame < this._maxSceneryPerFrame;
           i++
         ) {
-          treesAttemptedThisFrame++;
+          sceneryAttemptedThisFrame++;
           // Generate random position within chunk bounds (in local space)
           const localX = (seededRandom() - 0.5) * chunkSize;
           const localY = (seededRandom() - 0.5) * chunkSize;
@@ -443,7 +600,7 @@ void main() {
           // Check if scenery already exists at this position
           if (this._sceneryByWorldPos.has(worldPosKey)) {
             activeWorldPositions.add(worldPosKey);
-            continue; // Tree already exists at this position
+            continue; // Scenery already exists at this position
           }
 
           // Calculate distance from camera
@@ -451,17 +608,32 @@ void main() {
 
           // Only place scenery if within max distance
           if (distanceToCamera > this._maxSceneryDistance) {
-            continue; // Skip this tree - too far from camera
+            continue; // Skip this scenery - too far from camera
           }
 
           // Get terrain height at this position
           const terrainPosition = this._GetTerrainHeight(worldPos);
 
-          // Create tree at this position
-          const tree = this._CreateTree(terrainPosition);
-          this._sceneryByWorldPos.set(worldPosKey, tree);
+          // Determine which type of scenery to spawn based on ratios
+          const rand = seededRandom();
+          let scenery;
+          let sceneryType;
+
+          if (rand < this._treeRatio) {
+            scenery = this._CreateTree(terrainPosition);
+            sceneryType = "tree";
+          } else if (rand < this._treeRatio + this._rockRatio) {
+            scenery = this._CreateRock(terrainPosition);
+            sceneryType = "rock";
+          } else {
+            scenery = this._CreateBush(terrainPosition);
+            sceneryType = "bush";
+          }
+
+          this._sceneryByWorldPos.set(worldPosKey, scenery);
+          this._sceneryTypeByWorldPos.set(worldPosKey, sceneryType);
           activeWorldPositions.add(worldPosKey);
-          treesSpawnedThisFrame++;
+          scenerySpawnedThisFrame++;
 
           // Track by chunk key for cleanup
           if (!this._objectsByNode.has(key)) {
@@ -470,11 +642,12 @@ void main() {
         }
 
         // Update spawn progress for this chunk
-        const totalAttempted = treesAttemptedSoFar + treesAttemptedThisFrame;
+        const totalAttempted =
+          sceneryAttemptedSoFar + sceneryAttemptedThisFrame;
         this._chunkSpawnProgress.set(key, totalAttempted);
 
-        // Mark chunk as fully processed if we've attempted all trees
-        if (totalAttempted >= numTrees) {
+        // Mark chunk as fully processed if we've attempted all scenery
+        if (totalAttempted >= numScenery) {
           this._processedChunks.add(key);
         }
       }
@@ -484,9 +657,9 @@ void main() {
       // Only remove if it's too far from camera
       const worldPosToRemove = [];
       for (const worldPosKey of this._sceneryByWorldPos.keys()) {
-        const tree = this._sceneryByWorldPos.get(worldPosKey);
-        if (tree) {
-          const distanceToCamera = cameraPosition.distanceTo(tree.position);
+        const scenery = this._sceneryByWorldPos.get(worldPosKey);
+        if (scenery) {
+          const distanceToCamera = cameraPosition.distanceTo(scenery.position);
           // Only remove scenery if it's too far from camera
           // Don't remove based on activeWorldPositions - scenery should persist even when chunks subdivide
           if (distanceToCamera > this._maxSceneryDistance) {
@@ -497,14 +670,15 @@ void main() {
 
       // Remove scenery that's no longer referenced by any active chunks
       for (const worldPosKey of worldPosToRemove) {
-        const tree = this._sceneryByWorldPos.get(worldPosKey);
-        if (tree) {
-          this._RemoveTree(tree);
+        const scenery = this._sceneryByWorldPos.get(worldPosKey);
+        if (scenery) {
+          this._RemoveScenery(scenery);
           this._sceneryByWorldPos.delete(worldPosKey);
+          this._sceneryTypeByWorldPos.delete(worldPosKey);
 
           // Remove from chunk key mapping
-          for (const [chunkKey, chunkTree] of this._debugCubes.entries()) {
-            if (chunkTree === tree) {
+          for (const [chunkKey, chunkScenery] of this._debugCubes.entries()) {
+            if (chunkScenery === scenery) {
               this._debugCubes.delete(chunkKey);
             }
           }
