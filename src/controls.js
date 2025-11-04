@@ -110,8 +110,8 @@ void main() {
       this._pitchAxis = new THREE.Vector3();
       this._rollAxis = new THREE.Vector3();
       this._mouseSensitivity = {
-        yaw: 0.002,
-        pitch: 0.002,
+        yaw: 0.005,
+        pitch: 0.005,
       };
       this._spawnDirection = new THREE.Vector3();
       this._spawnPosition = new THREE.Vector3();
@@ -119,8 +119,8 @@ void main() {
 
       this._gamepad = null;
       this._gamepadSensitivity = {
-        yaw: 0.01,
-        pitch: 0.01,
+        yaw: 0.025,
+        pitch: 0.025,
       };
       this._gamepadDeadZone = 0.1;
       this._gamepadStartButtonPressed = false;

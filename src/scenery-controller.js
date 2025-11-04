@@ -80,6 +80,7 @@ void main() {
         ? params.center.clone()
         : new THREE.Vector3(0, 0, 0);
       this._shape = params.shape || "planet";
+      this._shapeParams = params.shapeParams || {};
 
       this._logDepthBufFC = 2.0 / (Math.log(this._camera.far + 1.0) / Math.LN2);
 
@@ -143,6 +144,29 @@ void main() {
       this._biomeNoise = new noise.Noise(biomeParams);
     }
 
+    _GetSurfaceNormal(worldPosition) {
+      // Calculate surface normal based on shape
+      const direction = new THREE.Vector3();
+      direction.copy(worldPosition);
+      direction.sub(this._center);
+      direction.normalize();
+
+      if (this._shape === "ring") {
+        // For ring, normal is negative of radial direction in XY plane
+        const _D = direction.clone();
+        const _EquatorDir = new THREE.Vector3(_D.x, 0, _D.z);
+        if (_EquatorDir.lengthSq() < 1e-8) {
+          _EquatorDir.set(1, 0, 0);
+        } else {
+          _EquatorDir.normalize();
+        }
+        return _EquatorDir.negate();
+      } else {
+        // For planet, normal is radial outward from center
+        return direction;
+      }
+    }
+
     _CreateTree(worldPosition) {
       // Create a group to hold the tree parts
       const tree = new THREE.Group();
@@ -190,13 +214,10 @@ void main() {
       // Position the tree at world position
       tree.position.copy(worldPosition);
 
-      // Calculate direction from planet center to tree position (radial outward = surface normal)
-      const direction = new THREE.Vector3();
-      direction.copy(worldPosition);
-      direction.sub(this._center);
-      direction.normalize();
+      // Calculate surface normal based on shape
+      const direction = this._GetSurfaceNormal(worldPosition);
 
-      // Create a proper rotation to align tree's Y-axis with the radial direction
+      // Create a proper rotation to align tree's Y-axis with the surface normal
       // Use a more robust method that handles edge cases
       const up = new THREE.Vector3(0, 1, 0);
       const dot = up.dot(direction);
@@ -221,7 +242,7 @@ void main() {
         tree.quaternion.setFromAxisAngle(axis, angle);
       }
 
-      // Add some random rotation around the radial axis (Y-axis after rotation) for variation
+      // Add some random rotation around the surface normal for variation
       const randomRotation = Math.random() * Math.PI * 2;
       tree.rotateOnWorldAxis(direction, randomRotation);
 
@@ -273,13 +294,10 @@ void main() {
       // Position the rock at world position
       rock.position.copy(worldPosition);
 
-      // Calculate direction from planet center to rock position (radial outward = surface normal)
-      const direction = new THREE.Vector3();
-      direction.copy(worldPosition);
-      direction.sub(this._center);
-      direction.normalize();
+      // Calculate surface normal based on shape
+      const direction = this._GetSurfaceNormal(worldPosition);
 
-      // Align rock's Y-axis with the radial direction
+      // Align rock's Y-axis with the surface normal
       const up = new THREE.Vector3(0, 1, 0);
       const dot = up.dot(direction);
 
@@ -295,7 +313,7 @@ void main() {
         rock.quaternion.setFromAxisAngle(axis, angle);
       }
 
-      // Add random rotation around the radial axis for variation
+      // Add random rotation around the surface normal for variation
       const randomRotation = Math.random() * Math.PI * 2;
       rock.rotateOnWorldAxis(direction, randomRotation);
 
@@ -332,13 +350,10 @@ void main() {
       // Position the bush at world position
       bush.position.copy(worldPosition);
 
-      // Calculate direction from planet center to bush position (radial outward = surface normal)
-      const direction = new THREE.Vector3();
-      direction.copy(worldPosition);
-      direction.sub(this._center);
-      direction.normalize();
+      // Calculate surface normal based on shape
+      const direction = this._GetSurfaceNormal(worldPosition);
 
-      // Align bush's Y-axis with the radial direction
+      // Align bush's Y-axis with the surface normal
       const up = new THREE.Vector3(0, 1, 0);
       const dot = up.dot(direction);
 
@@ -354,7 +369,7 @@ void main() {
         bush.quaternion.setFromAxisAngle(axis, angle);
       }
 
-      // Add random rotation around the radial axis for variation
+      // Add random rotation around the surface normal for variation
       const randomRotation = Math.random() * Math.PI * 2;
       bush.rotateOnWorldAxis(direction, randomRotation);
 
@@ -431,7 +446,7 @@ void main() {
     // Get height of terrain at a given world position
     _GetTerrainHeight(worldPosition) {
       // Sample noise at the world position
-      const height = this._noise.Get(
+      let height = this._noise.Get(
         worldPosition.x,
         worldPosition.y,
         worldPosition.z
@@ -443,11 +458,53 @@ void main() {
       normal.sub(this._center);
       normal.normalize();
 
-      // Return the actual terrain position on the sphere with height
-      const terrainPosition = normal
-        .clone()
-        .multiplyScalar(this._radius + height);
-      terrainPosition.add(this._center);
+      let terrainPosition;
+      if (this._shape === "ring") {
+        // For ring, project onto ring geometry
+        const _D = normal.clone();
+        const latitudeValue = Math.abs(_D.y);
+
+        // Calculate height mask for ring (same as terrain builder)
+        const latCutoff = this._shapeParams.latCutoff || 0.02;
+        const latFade = this._shapeParams.latFade || 0.05;
+        const dropExponent = this._shapeParams.dropExponent || 1.5;
+
+        const latCutoffClamped = Math.max(0.0, Math.min(1.0, latCutoff));
+        const latFadeSafe = Math.max(1e-5, latFade);
+        const blendRaw = Math.min(
+          1.0,
+          Math.max(0.0, (latitudeValue - latCutoffClamped) / latFadeSafe)
+        );
+        const heightMask = 1.0 - Math.pow(blendRaw, dropExponent);
+
+        height *= heightMask;
+
+        // Project onto ring
+        const _EquatorDir = new THREE.Vector3(_D.x, 0, _D.z);
+        if (_EquatorDir.lengthSq() < 1e-8) {
+          _EquatorDir.set(1, 0, 0);
+        } else {
+          _EquatorDir.normalize();
+        }
+
+        const ringRadius = this._radius;
+        const verticalOffset = _D.y * ringRadius;
+
+        const _RadialDir = _EquatorDir.clone();
+
+        terrainPosition = _RadialDir.clone().multiplyScalar(ringRadius);
+        terrainPosition.y = verticalOffset;
+
+        // Add height along the radial direction (negative for inward normal)
+        const heightOffset = _RadialDir.clone().negate().multiplyScalar(height);
+        terrainPosition.add(heightOffset);
+
+        terrainPosition.add(this._center);
+      } else {
+        // For planet, use standard sphere projection
+        terrainPosition = normal.clone().multiplyScalar(this._radius + height);
+        terrainPosition.add(this._center);
+      }
 
       return terrainPosition;
     }
@@ -513,7 +570,28 @@ void main() {
         const worldCenter = chunkCenter.clone();
         worldCenter.applyMatrix4(chunk.transform);
         worldCenter.normalize();
-        worldCenter.multiplyScalar(this._radius);
+
+        if (this._shape === "ring") {
+          // Project onto ring geometry
+          const _D = worldCenter.clone();
+          const _EquatorDir = new THREE.Vector3(_D.x, 0, _D.z);
+          if (_EquatorDir.lengthSq() < 1e-8) {
+            _EquatorDir.set(1, 0, 0);
+          } else {
+            _EquatorDir.normalize();
+          }
+
+          const ringRadius = this._radius;
+          const verticalOffset = _D.y * ringRadius;
+
+          worldCenter.copy(_EquatorDir).multiplyScalar(ringRadius);
+          worldCenter.y = verticalOffset;
+          worldCenter.add(this._center);
+        } else {
+          // For planet, scale by radius and add center
+          worldCenter.multiplyScalar(this._radius);
+          worldCenter.add(this._center);
+        }
 
         // Early distance check - skip chunk if too far from camera
         const distanceToChunkCenter = cameraPosition.distanceTo(worldCenter);
@@ -579,9 +657,30 @@ void main() {
           const worldPos = localPos.clone();
           worldPos.applyMatrix4(chunk.transform);
 
-          // Normalize to sphere surface and scale by radius
+          // Project onto surface (sphere or ring)
           worldPos.normalize();
-          worldPos.multiplyScalar(this._radius);
+
+          if (this._shape === "ring") {
+            // Project onto ring geometry
+            const _D = worldPos.clone();
+            const _EquatorDir = new THREE.Vector3(_D.x, 0, _D.z);
+            if (_EquatorDir.lengthSq() < 1e-8) {
+              _EquatorDir.set(1, 0, 0);
+            } else {
+              _EquatorDir.normalize();
+            }
+
+            const ringRadius = this._radius;
+            const verticalOffset = _D.y * ringRadius;
+
+            worldPos.copy(_EquatorDir).multiplyScalar(ringRadius);
+            worldPos.y = verticalOffset;
+            worldPos.add(this._center);
+          } else {
+            // For planet, scale by radius and add center
+            worldPos.multiplyScalar(this._radius);
+            worldPos.add(this._center);
+          }
 
           // Round to grid for stable position key
           const gridX =

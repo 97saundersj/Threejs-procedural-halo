@@ -8,6 +8,8 @@ import { terrain_constants } from "./terrain-constants.js";
 import { texture_splatter } from "./texture-splatter.js";
 import { textures } from "./textures.js";
 import { utils } from "./utils.js";
+import { ocean } from "./ocean.js";
+import { scenery_controller } from "./scenery-controller.js";
 
 export const terrain = (function () {
   class TerrainChunkManager {
@@ -92,6 +94,39 @@ export const terrain = (function () {
       this._InitNoise(params);
       this._InitBiomes(params);
       this._InitTerrain(params);
+
+      // Initialize ocean for planet and ring-shaped terrain
+      if (this._shape === "planet" || this._shape === "ring") {
+        this._ocean = new ocean.OceanChunkManager({
+          camera: params.camera,
+          scene: params.scene,
+          gui: params.gui,
+          guiParams: params.guiParams,
+          radius: this._radius,
+          center: this._center,
+          shape: this._shape,
+          shapeParams: this._shapeParams,
+        });
+
+        // Initialize scenery controller for planet and ring-shaped terrain
+        // Note: scenery controller needs the terrain manager (this) as a parameter
+        if (this._shape === "planet" || this._shape === "ring") {
+          this._scenery = new scenery_controller.SceneryController({
+            camera: params.camera,
+            scene: params.scene,
+            terrainManager: this,
+            radius: this._radius,
+            center: this._center,
+            shape: this._shape,
+            shapeParams: this._shapeParams,
+          });
+        } else {
+          this._scenery = null;
+        }
+      } else {
+        this._ocean = null;
+        this._scenery = null;
+      }
     }
 
     _InitNoise(params) {
@@ -282,7 +317,7 @@ export const terrain = (function () {
       return this._builder.AllocateChunk(params);
     }
 
-    Update(_) {
+    Update(timeInSeconds) {
       this._builder.Update();
       if (!this._builder.Busy) {
         this._UpdateVisibleChunks_Quadtree();
@@ -301,6 +336,16 @@ export const terrain = (function () {
         this._params.scattering.uniforms.planetRadius.value = this._radius;
         this._params.scattering.uniforms.atmosphereRadius.value =
           this._radius * 1.015;
+      }
+
+      // Update ocean if it exists
+      if (this._ocean) {
+        this._ocean.Update(timeInSeconds);
+      }
+
+      // Update scenery if it exists
+      if (this._scenery) {
+        this._scenery.Update();
       }
     }
 
@@ -409,10 +454,23 @@ export const terrain = (function () {
       if (this._material && this._material.uniforms.sunDirection) {
         this._material.uniforms.sunDirection.value.copy(sunDirection);
       }
+
+      // Update ocean sun direction if it exists
+      if (this._ocean && this._ocean.UpdateSunDirection) {
+        this._ocean.UpdateSunDirection(sunDirection);
+      }
     }
 
     GetChunks() {
       return this._chunks;
+    }
+
+    GetOcean() {
+      return this._ocean;
+    }
+
+    GetScenery() {
+      return this._scenery;
     }
 
     IsReady() {

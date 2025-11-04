@@ -15,7 +15,17 @@ export const ocean = (function () {
       this._params = params;
       this._params.guiParams = this._params.guiParams || {};
 
-      this._radius = params.radius || 400010.0;
+      // Ocean should be at sea level
+      // For planet shapes: slightly above terrain base radius (add 10 units)
+      // For ring shapes: slightly below terrain base radius (subtract 10 units)
+      // Terrain base is at radius, terrain has height variations that go up from there
+      // Default to 400010.0 (10 units above PLANET_RADIUS) if no radius provided
+      const isRing = params.shape === "ring";
+      if (params.radius) {
+        this._radius = isRing ? params.radius - 10.0 : params.radius + 10.0;
+      } else {
+        this._radius = 400010.0;
+      }
       this._center = params.center
         ? params.center.clone()
         : new THREE.Vector3(0, 0, 0);
@@ -233,19 +243,52 @@ export const ocean = (function () {
 
       const positions = positionAttribute.array;
       const normals = normalAttribute ? normalAttribute.array : null;
+      const indices = geometry.index ? geometry.index.array : null;
 
       const tempPos = new THREE.Vector3();
       const tempNormal = new THREE.Vector3();
       const localPos = new THREE.Vector3();
       const worldCenter = new THREE.Vector3();
+      const _D = new THREE.Vector3();
+      const _EquatorDir = new THREE.Vector3();
+      const _RadialDir = new THREE.Vector3();
+
+      const oceanRadius = this._radius;
+      const isRing = this._shape === "ring";
+
+      // For ring shapes, track latitude for each vertex to cull faces
+      const latitudes = isRing ? [] : null;
+      const cullLatitude = isRing
+        ? this._shapeParams.cullLatitude !== undefined
+          ? this._shapeParams.cullLatitude
+          : 0.08
+        : Infinity;
 
       // Calculate the world-space center of this chunk
       tempPos.copy(offset);
       tempPos.applyMatrix4(groupTransform);
       tempPos.normalize();
-      const oceanRadius = this._radius;
-      worldCenter.copy(tempPos);
-      worldCenter.multiplyScalar(oceanRadius);
+
+      if (isRing) {
+        // For ring, calculate position on the ring
+        _D.copy(tempPos);
+        const latitudeValue = Math.abs(_D.y);
+        _EquatorDir.set(_D.x, 0, _D.z);
+        if (_EquatorDir.lengthSq() < 1e-8) {
+          _EquatorDir.set(1, 0, 0);
+        } else {
+          _EquatorDir.normalize();
+        }
+        _RadialDir.copy(_EquatorDir);
+        const verticalOffset = _D.y * oceanRadius;
+        worldCenter.copy(_RadialDir).multiplyScalar(oceanRadius);
+        worldCenter.y = verticalOffset;
+        worldCenter.add(this._center);
+      } else {
+        // For planet shapes, center is at origin
+        worldCenter.copy(tempPos);
+        worldCenter.multiplyScalar(oceanRadius);
+      }
 
       for (let i = 0; i < positions.length; i += 3) {
         // Get local position (before transform)
@@ -256,12 +299,43 @@ export const ocean = (function () {
         tempPos.add(offset);
         tempPos.applyMatrix4(groupTransform);
 
-        // Project onto sphere at ocean level
-        tempPos.normalize();
-        tempNormal.copy(tempPos);
+        if (isRing) {
+          // Project onto ring at ocean level
+          tempPos.normalize();
+          _D.copy(tempPos);
+          const latitudeValue = Math.abs(_D.y);
 
-        // Scale to ocean radius (at planet radius for sea level)
-        tempPos.multiplyScalar(oceanRadius);
+          // Store latitude for this vertex (for face culling)
+          latitudes.push(latitudeValue);
+
+          _EquatorDir.set(_D.x, 0, _D.z);
+          if (_EquatorDir.lengthSq() < 1e-8) {
+            _EquatorDir.set(1, 0, 0);
+          } else {
+            _EquatorDir.normalize();
+          }
+
+          _RadialDir.copy(_EquatorDir);
+          const verticalOffset = _D.y * oceanRadius;
+
+          // Position on ring
+          tempPos.copy(_RadialDir).multiplyScalar(oceanRadius);
+          tempPos.y = verticalOffset;
+          tempPos.add(this._center);
+
+          // For ring, use a placeholder normal - it will be recomputed from geometry
+          // This ensures correct facing based on face winding
+          // Use a basic upward normal as placeholder (will be overridden)
+          tempNormal.set(0, 1, 0);
+        } else {
+          // Project onto sphere at ocean level
+          tempPos.normalize();
+          tempNormal.copy(tempPos);
+
+          // Scale to ocean radius (at planet radius for sea level)
+          // For planet shapes, position relative to origin (no center offset)
+          tempPos.multiplyScalar(oceanRadius);
+        }
 
         // Store position relative to chunk center (for positioning relative to camera)
         tempPos.sub(worldCenter);
@@ -269,7 +343,7 @@ export const ocean = (function () {
         positions[i + 1] = tempPos.y;
         positions[i + 2] = tempPos.z;
 
-        // Store normal (pointing outward from sphere)
+        // Store normal (pointing outward from sphere/ring)
         if (normals) {
           normals[i] = tempNormal.x;
           normals[i + 1] = tempNormal.y;
@@ -277,9 +351,61 @@ export const ocean = (function () {
         }
       }
 
+      // For ring shapes, cull faces that are too far from equator
+      if (isRing && indices && latitudes.length > 0) {
+        const newIndices = [];
+        const numVerts = resolution + 1;
+
+        for (let i = 0; i < resolution; i++) {
+          for (let j = 0; j < resolution; j++) {
+            const row = numVerts;
+            const v00 = i * row + j;
+            const v01 = v00 + 1;
+            const v10 = (i + 1) * row + j;
+            const v11 = v10 + 1;
+
+            // Check if any vertex is too far from equator
+            const latMax = Math.max(
+              latitudes[v00],
+              latitudes[v01],
+              latitudes[v10],
+              latitudes[v11]
+            );
+
+            if (latMax <= cullLatitude) {
+              // Keep face - add indices with ring winding order
+              newIndices.push(v00, v01, v11);
+              newIndices.push(v00, v11, v10);
+            }
+          }
+        }
+
+        // Update geometry with culled indices
+        geometry.setIndex(newIndices);
+      }
+
       positionAttribute.needsUpdate = true;
       if (normalAttribute) {
         normalAttribute.needsUpdate = true;
+        // For ring shapes, recompute normals from geometry to ensure correct facing
+        // The geometry will compute normals based on face winding
+        // For planet shapes, manually set normals are correct (outward from sphere)
+        if (isRing) {
+          // Don't manually set normals for ring - let geometry compute them
+          // This ensures normals match the face winding
+          geometry.computeVertexNormals();
+          // For ring shapes, flip normals to point inward (toward ring center)
+          // This ensures the ocean is visible from inside the ring
+          if (normalAttribute) {
+            const normals = normalAttribute.array;
+            for (let i = 0; i < normals.length; i += 3) {
+              normals[i] = -normals[i];
+              normals[i + 1] = -normals[i + 1];
+              normals[i + 2] = -normals[i + 2];
+            }
+            normalAttribute.needsUpdate = true;
+          }
+        }
       } else {
         // If normals weren't created, compute them now
         geometry.computeVertexNormals();
@@ -292,12 +418,21 @@ export const ocean = (function () {
       mesh.frustumCulled = false;
       mesh.renderOrder = 1; // Render after terrain (terrain is default 0)
 
+      // For ring shapes, use FrontSide like terrain
+      // The normals should be computed correctly from geometry to face inward
+      if (isRing) {
+        const ringMaterial = this._material.clone();
+        ringMaterial.side = THREE.FrontSide;
+        mesh.material = ringMaterial;
+      }
+
       group.add(mesh);
 
       return {
         mesh: mesh,
         geometry: geometry,
         origin: worldCenter.clone(),
+        worldCenter: worldCenter.clone(), // Store world center for reference
       };
     }
 

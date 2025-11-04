@@ -3,9 +3,7 @@ import { GUI } from "https://cdn.jsdelivr.net/npm/three@0.112.1/examples/jsm/lib
 import { controls } from "./controls.js";
 import { game } from "./game.js";
 import { terrain } from "./terrain.js";
-import { ocean } from "./ocean.js";
 import { sun } from "./sun.js";
-import { scenery_controller } from "./scenery-controller.js";
 import { terrain_constants } from "./terrain-constants.js";
 import { camera_track } from "./camera-track.js";
 
@@ -78,17 +76,6 @@ class ProceduralTerrain_Demo extends game.Game {
     this._terrainManager = terrainManager;
 
     this._AddEntity(
-      "_ocean",
-      new ocean.OceanChunkManager({
-        camera: this.graphics_.Camera,
-        scene: this.graphics_.Scene,
-        gui: this._gui,
-        guiParams: this._guiParams,
-      }),
-      1.5
-    );
-
-    this._AddEntity(
       "_sun",
       new sun.Sun({
         scene: this.graphics_.Scene,
@@ -114,21 +101,6 @@ class ProceduralTerrain_Demo extends game.Game {
       },
     });
     this._AddEntity("_ringworld", ringworldManager, 1.0);
-
-    // Add scenery controller
-    // Must be added after terrain managers are created
-    this._AddEntity(
-      "_scenery",
-      new scenery_controller.SceneryController({
-        camera: this.graphics_.Camera,
-        scene: this.graphics_.Scene,
-        terrainManager: terrainManager,
-        radius: terrain_constants.PLANET_RADIUS,
-        center: new THREE.Vector3(0, 0, 0),
-        shape: "planet",
-      }),
-      1.5
-    );
 
     // Create controls (they'll be disabled until pointer lock is activated)
     this._controls = new controls.FPSControls({
@@ -215,14 +187,10 @@ class ProceduralTerrain_Demo extends game.Game {
         terrainEntity.entity.UpdateSunDirection(sunDirection);
       }
 
-      // Update ocean shader
-      const oceanEntity = this._entities["_ocean"];
-      if (
-        oceanEntity &&
-        oceanEntity.entity &&
-        oceanEntity.entity.UpdateSunDirection
-      ) {
-        oceanEntity.entity.UpdateSunDirection(sunDirection);
+      // Update ocean shader (through terrain manager)
+      const ocean = this._terrainManager && this._terrainManager.GetOcean();
+      if (ocean && ocean.UpdateSunDirection) {
+        ocean.UpdateSunDirection(sunDirection);
       }
 
       // Update ringworld terrain shader
@@ -233,6 +201,15 @@ class ProceduralTerrain_Demo extends game.Game {
         ringworldEntity.entity.UpdateSunDirection
       ) {
         ringworldEntity.entity.UpdateSunDirection(sunDirection);
+      }
+
+      // Update ringworld ocean shader (through ringworld manager)
+      const ringworldOcean =
+        ringworldEntity &&
+        ringworldEntity.entity &&
+        ringworldEntity.entity.GetOcean();
+      if (ringworldOcean && ringworldOcean.UpdateSunDirection) {
+        ringworldOcean.UpdateSunDirection(sunDirection);
       }
     }
   }
