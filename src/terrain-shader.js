@@ -59,6 +59,7 @@ void main(){
 precision highp float;
 precision highp int;
 precision highp sampler2DArray;
+precision highp sampler2D;
 
 uniform sampler2DArray normalMap;
 uniform sampler2DArray diffuseMap;
@@ -85,14 +86,28 @@ out vec4 out_FragColor;
 
 #define saturate(a) clamp( a, 0.0, 1.0 )
 
+// sRGB to Linear conversion (Android WebGL compatibility)
+vec3 sRGBToLinearVec3(vec3 c) {
+    vec3 linearPart = c / 12.92;
+    vec3 temp = (c + 0.055) / 1.055;
+    vec3 gammaPart = vec3(
+        pow(temp.x, 2.4),
+        pow(temp.y, 2.4),
+        pow(temp.z, 2.4)
+    );
+    vec3 t = step(vec3(0.04045), c);
+    return mix(linearPart, gammaPart, t);
+}
+
+vec4 sRGBToLinearVec4(vec4 c) {
+    return vec4(sRGBToLinearVec3(c.rgb), c.a);
+}
+
 const float _TRI_SCALE = 10.0;
 
 float sum(vec3 v) {
   return v.x+v.y+v.z;
 }
-
-// Note: sRGBToLinear is already provided by Three.js shader chunks
-// Using the built-in functions instead of custom definitions
 
 vec4 _CalculateLighting(
     vec3 lightDirection, vec3 lightColour, vec3 worldSpaceNormal, vec3 viewDirection) {
@@ -165,8 +180,8 @@ vec4 texture_UV(in sampler2DArray srcTexture, in vec3 x) {
   vec2 offa = sin(vec2(3.0,7.0)*ia); // can replace with any other hash
   vec2 offb = sin(vec2(3.0,7.0)*ib); // can replace with any other hash
 
-  vec4 cola = sRGBToLinear(texture(srcTexture, vec3(x.xy + offa, x.z)));
-  vec4 colb = sRGBToLinear(texture(srcTexture, vec3(x.xy + offb, x.z)));
+  vec4 cola = sRGBToLinearVec4(texture(srcTexture, vec3(x.xy + offa, x.z)));
+  vec4 colb = sRGBToLinearVec4(texture(srcTexture, vec3(x.xy + offb, x.z)));
 
   return mix(cola, colb, smoothstep(0.2,0.8,f-0.1*sum(cola.xyz-colb.xyz)));
 }
@@ -196,7 +211,14 @@ vec4 _Triplanar_UV(vec3 pos, vec3 normal, float texSlice, sampler2DArray tex) {
   vec4 dz = texture_UV(tex, vec3(pos.xy / _TRI_SCALE, texSlice));
 
   vec3 weights = abs(normal.xyz);
-  weights = weights / (weights.x + weights.y + weights.z);
+  float weightSum = weights.x + weights.y + weights.z;
+  
+  // Protect against division by zero (Android WebGL strictness)
+  if (weightSum < 0.0001) {
+    return dx; // Return first sample as fallback
+  }
+  
+  weights = weights / weightSum;
 
   return dx * weights.x + dy * weights.y + dz * weights.z;
 }
@@ -213,7 +235,14 @@ vec4 _TriplanarN_UV(vec3 pos, vec3 normal, float texSlice, sampler2DArray tex) {
   vec3 tz = texture_UV_N(tex, vec3(uvZ / _TRI_SCALE, texSlice)).xyz * vec3(2,2,2) - vec3(1,1,1);
 
   vec3 weights = abs(normal.xyz);
-  weights = weights / (weights.x + weights.y + weights.z);
+  float weightSum = weights.x + weights.y + weights.z;
+  
+  // Protect against division by zero (Android WebGL strictness)
+  if (weightSum < 0.0001) {
+    return vec4(normal, 0.0); // Return base normal as fallback
+  }
+  
+  weights = weights / weightSum;
 
   // Get the sign (-1 or 1) of the surface normal
   vec3 axis = sign(normal);
@@ -241,12 +270,19 @@ vec4 _TriplanarN_UV(vec3 pos, vec3 normal, float texSlice, sampler2DArray tex) {
 }
 
 vec4 _Triplanar(vec3 pos, vec3 normal, float texSlice, sampler2DArray tex) {
-  vec4 dx = sRGBToLinear(texture(tex, vec3(pos.zy / _TRI_SCALE, texSlice)));
-  vec4 dy = sRGBToLinear(texture(tex, vec3(pos.xz / _TRI_SCALE, texSlice)));
-  vec4 dz = sRGBToLinear(texture(tex, vec3(pos.xy / _TRI_SCALE, texSlice)));
+  vec4 dx = sRGBToLinearVec4(texture(tex, vec3(pos.zy / _TRI_SCALE, texSlice)));
+  vec4 dy = sRGBToLinearVec4(texture(tex, vec3(pos.xz / _TRI_SCALE, texSlice)));
+  vec4 dz = sRGBToLinearVec4(texture(tex, vec3(pos.xy / _TRI_SCALE, texSlice)));
 
   vec3 weights = abs(normal.xyz);
-  weights = weights / (weights.x + weights.y + weights.z);
+  float weightSum = weights.x + weights.y + weights.z;
+  
+  // Protect against division by zero (Android WebGL strictness)
+  if (weightSum < 0.0001) {
+    return dx; // Return first sample as fallback
+  }
+  
+  weights = weights / weightSum;
 
   return dx * weights.x + dy * weights.y + dz * weights.z;
 }
@@ -261,7 +297,14 @@ vec4 _TriplanarN(vec3 pos, vec3 normal, float texSlice, sampler2DArray tex) {
 
   vec3 weights = abs(normal.xyz);
   weights *= weights;
-  weights = weights / (weights.x + weights.y + weights.z);
+  float weightSum = weights.x + weights.y + weights.z;
+  
+  // Protect against division by zero (Android WebGL strictness)
+  if (weightSum < 0.0001) {
+    return vec4(normal, 0.0); // Return base normal as fallback
+  }
+  
+  weights = weights / weightSum;
 
   vec3 axis = sign(normal);
   vec3 tangentX = normalize(cross(normal, vec3(0.0, axis.x, 0.0)));
@@ -285,7 +328,8 @@ vec4 _TriplanarN(vec3 pos, vec3 normal, float texSlice, sampler2DArray tex) {
 
 void main() {
   vec3 worldPosition = vRepeatingCoords;
-  vec3 eyeDirection = normalize(worldPosition - cameraPosition);
+  // Compute eye direction from view space (camera is at origin in view space)
+  vec3 eyeDirection = normalize(-vVSPos);
   vec3 sunDir = normalize(sunDirection);
 
   float weightIndices[4] = float[4](vWeights1.x, vWeights1.y, vWeights1.z, vWeights1.w);
