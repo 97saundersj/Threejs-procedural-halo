@@ -399,14 +399,14 @@ export const scattering_shader = (function () {
   }
 
   void main() {
-    float z = texture2D(tDepth, vUv).x;
+    float z = texture(tDepth, vUv).x;
     vec3 posWS = _ScreenToWorld(vec3(vUv, z));
     float dist = length(posWS - cameraPosition);
     float height = max(0.0, length(cameraPosition) - planetRadius);
     vec3 cameraDirection = normalize(posWS - cameraPosition);
 
 
-    vec3 diffuse = texture2D(tDiffuse, vUv).xyz;
+    vec3 diffuse = texture(tDiffuse, vUv).xyz;
     vec3 lightDir = normalize(sunDirection);
 
     // diffuse = _ApplyFog(diffuse, dist, height, posWS, cameraPosition, cameraDirection, lightDir);

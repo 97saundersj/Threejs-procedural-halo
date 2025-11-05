@@ -25,7 +25,8 @@ export const sun = (function () {
       const geometry = new THREE.SphereGeometry(2000000, 32, 32);
 
       // Create emissive material for glowing effect
-      const material = new THREE.MeshBasicMaterial({
+      // Use MeshStandardMaterial which supports emissive properties
+      const material = new THREE.MeshStandardMaterial({
         color: 0xffffaa,
         emissive: 0xffaa44,
         emissiveIntensity: 1.0,

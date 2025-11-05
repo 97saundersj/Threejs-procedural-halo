@@ -91,6 +91,8 @@ float sum(vec3 v) {
   return v.x+v.y+v.z;
 }
 
+// Note: sRGBToLinear is already provided by Three.js shader chunks
+// Using the built-in functions instead of custom definitions
 
 vec4 _CalculateLighting(
     vec3 lightDirection, vec3 lightColour, vec3 worldSpaceNormal, vec3 viewDirection) {
@@ -135,6 +137,12 @@ vec4 _TerrainBlend_4(vec4 samples[4]) {
       samples[0] * b1 + samples[1] * b2 +
       samples[2] * b3 + samples[3] * b4);
   float denom = (b1 + b2 + b3 + b4);
+  
+  // Protect against division by zero (Android WebGL strictness)
+  if (denom < 0.0001) {
+    return samples[0]; // Return first sample as fallback
+  }
+  
   return numer / denom;
 }
 

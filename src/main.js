@@ -236,7 +236,7 @@ class ProceduralTerrain_Demo extends game.Game {
       "./resources/space-negz.jpg",
     ]);
     texture.encoding = THREE.sRGBEncoding;
-    this.graphics_._scene.background = texture;
+    this.graphics_.Scene.background = texture;
   }
 
   _OnStep(timeInSeconds) {
