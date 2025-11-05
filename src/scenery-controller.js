@@ -261,18 +261,47 @@ void main() {
         ROCK_MIN_SCALE + Math.random() * (ROCK_MAX_SCALE - ROCK_MIN_SCALE);
 
       // Create rock using an icosahedron for a more natural shape
-      const rockGeometry = new THREE.IcosahedronGeometry(scale, 0);
+      let rockGeometry = new THREE.IcosahedronGeometry(scale, 0);
       const rockMaterial = _CreateTreeMaterial(this._logDepthBufFC, ROCK_COLOR);
 
-      // Add some random distortion for more natural look
-      if (!rockGeometry.attributes) {
-        console.warn("Rock geometry missing attributes object", rockGeometry);
-      } else if (!rockGeometry.attributes.position) {
-        console.warn(
-          "Rock geometry missing position attribute",
-          rockGeometry.attributes
+      // Convert to BufferGeometry if needed (handle old Geometry format)
+      if (
+        !rockGeometry.attributes &&
+        rockGeometry.vertices &&
+        rockGeometry.vertices.length > 0
+      ) {
+        // Convert old Geometry format to BufferGeometry
+        const bufferGeometry = new THREE.BufferGeometry();
+        const positions = [];
+        const indices = [];
+
+        // Convert vertices to positions array
+        for (let i = 0; i < rockGeometry.vertices.length; i++) {
+          const vertex = rockGeometry.vertices[i];
+          positions.push(vertex.x, vertex.y, vertex.z);
+        }
+
+        // Convert faces to indices
+        if (rockGeometry.faces) {
+          for (let i = 0; i < rockGeometry.faces.length; i++) {
+            const face = rockGeometry.faces[i];
+            indices.push(face.a, face.b, face.c);
+          }
+        }
+
+        bufferGeometry.setAttribute(
+          "position",
+          new THREE.Float32BufferAttribute(positions, 3)
         );
-      } else {
+        if (indices.length > 0) {
+          bufferGeometry.setIndex(indices);
+        }
+        bufferGeometry.computeVertexNormals();
+        rockGeometry = bufferGeometry;
+      }
+
+      // Add some random distortion for more natural look
+      if (rockGeometry.attributes && rockGeometry.attributes.position) {
         const positions = rockGeometry.attributes.position;
         const positionArray = positions.array;
         for (let i = 0; i < positionArray.length; i += 3) {
