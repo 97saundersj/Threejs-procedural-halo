@@ -374,25 +374,25 @@ class _TerrainBuilderThreadedWorker {
 
     const bytesInFloat32 = 4;
     const positionsArray = new Float32Array(
-      new SharedArrayBuffer(bytesInFloat32 * uiPositions.length)
+      new ArrayBuffer(bytesInFloat32 * uiPositions.length)
     );
     const coloursArray = new Float32Array(
-      new SharedArrayBuffer(bytesInFloat32 * uiColours.length)
+      new ArrayBuffer(bytesInFloat32 * uiColours.length)
     );
     const normalsArray = new Float32Array(
-      new SharedArrayBuffer(bytesInFloat32 * uiNormals.length)
+      new ArrayBuffer(bytesInFloat32 * uiNormals.length)
     );
     const coordsArray = new Float32Array(
-      new SharedArrayBuffer(bytesInFloat32 * uiCoords.length)
+      new ArrayBuffer(bytesInFloat32 * uiCoords.length)
     );
     const uvsArray = new Float32Array(
-      new SharedArrayBuffer(bytesInFloat32 * uiUVs.length)
+      new ArrayBuffer(bytesInFloat32 * uiUVs.length)
     );
     const weights1Array = new Float32Array(
-      new SharedArrayBuffer(bytesInFloat32 * uiWeights2.length)
+      new ArrayBuffer(bytesInFloat32 * uiWeights2.length)
     );
     const weights2Array = new Float32Array(
-      new SharedArrayBuffer(bytesInFloat32 * uiWeights2.length)
+      new ArrayBuffer(bytesInFloat32 * uiWeights2.length)
     );
 
     positionsArray.set(uiPositions, 0);
@@ -422,6 +422,21 @@ self.onmessage = (msg) => {
     _CHUNK.Init(msg.data.params);
 
     const rebuiltData = _CHUNK.Rebuild();
-    self.postMessage({ subject: "build_chunk_result", data: rebuiltData });
+    
+    // Extract ArrayBuffers for transfer list (transfer ownership efficiently)
+    const transferList = [
+      rebuiltData.positions.buffer,
+      rebuiltData.colours.buffer,
+      rebuiltData.normals.buffer,
+      rebuiltData.coords.buffer,
+      rebuiltData.uvs.buffer,
+      rebuiltData.weights1.buffer,
+      rebuiltData.weights2.buffer,
+    ];
+    
+    self.postMessage(
+      { subject: "build_chunk_result", data: rebuiltData },
+      transferList
+    );
   }
 };
