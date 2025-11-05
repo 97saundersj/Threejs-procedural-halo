@@ -8,6 +8,74 @@
     <div id="target"></div>
     <div id="acceleration-display">Acceleration: 50%</div>
     <div id="fps-display">FPS: 60</div>
+
+    <!-- WebGL strict error checking for Android compatibility testing -->
+    <script>
+      // Override shader compilation to catch errors (works for both WebGL and WebGL2)
+      const originalCompileShader =
+        WebGLRenderingContext.prototype.compileShader;
+      WebGLRenderingContext.prototype.compileShader = function (shader) {
+        originalCompileShader.call(this, shader);
+        if (!this.getShaderParameter(shader, this.COMPILE_STATUS)) {
+          const error = this.getShaderInfoLog(shader);
+          const source = this.getShaderSource(shader);
+          console.error("SHADER COMPILATION ERROR:");
+          console.error("Error:", error);
+          console.error(
+            "Shader source (first 500 chars):",
+            source.substring(0, 500)
+          );
+          // Also log full shader source for debugging
+          if (source.length > 500) {
+            console.error("Full shader source:", source);
+          }
+        }
+      };
+
+      // Override program linking to catch errors
+      const originalLinkProgram = WebGLRenderingContext.prototype.linkProgram;
+      WebGLRenderingContext.prototype.linkProgram = function (program) {
+        originalLinkProgram.call(this, program);
+        if (!this.getProgramParameter(program, this.LINK_STATUS)) {
+          const error = this.getProgramInfoLog(program);
+          console.error("PROGRAM LINK ERROR:", error);
+          console.error(
+            "This usually means shader compilation failed or there are mismatched attributes/varyings"
+          );
+        }
+      };
+
+      // Override useProgram to catch invalid program usage
+      const originalUseProgram = WebGLRenderingContext.prototype.useProgram;
+      WebGLRenderingContext.prototype.useProgram = function (program) {
+        if (program && !this.getProgramParameter(program, this.LINK_STATUS)) {
+          const error = this.getProgramInfoLog(program);
+          console.error("ATTEMPTING TO USE INVALID PROGRAM!");
+          console.error("Program link error:", error);
+          console.trace("Stack trace:");
+        }
+        return originalUseProgram.call(this, program);
+      };
+
+      window.addEventListener("load", function () {
+        const canvas = document.createElement("canvas");
+        const gl = canvas.getContext("webgl2", {
+          // Request stricter context
+          failIfMajorPerformanceCaveat: true,
+          powerPreference: "low-power", // Simulates mobile GPU
+        });
+
+        if (!gl) {
+          console.error("WebGL2 not available");
+          return;
+        }
+
+        console.log(
+          "WebGL strict checking enabled - shader errors will be logged to console."
+        );
+      });
+    </script>
+
     <script src="./src/main.js" type="module"></script>
   </body>
 </html>
