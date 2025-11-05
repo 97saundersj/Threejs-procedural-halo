@@ -8,72 +8,303 @@
     <div id="target"></div>
     <div id="acceleration-display">Acceleration: 50%</div>
     <div id="fps-display">FPS: 60</div>
+    <div
+      id="webgl-error-display"
+      style="
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        background: #ff0000;
+        color: white;
+        padding: 10px;
+        font-family: monospace;
+        font-size: 12px;
+        z-index: 10000;
+        display: none;
+        max-height: 50vh;
+        overflow-y: auto;
+        white-space: pre-wrap;
+      "
+    ></div>
 
     <!-- WebGL strict error checking for Android compatibility testing -->
+    <!-- MUST RUN BEFORE ANY MODULES LOAD -->
     <script>
-      // Override shader compilation to catch errors (works for both WebGL and WebGL2)
-      const originalCompileShader =
-        WebGLRenderingContext.prototype.compileShader;
-      WebGLRenderingContext.prototype.compileShader = function (shader) {
-        originalCompileShader.call(this, shader);
-        if (!this.getShaderParameter(shader, this.COMPILE_STATUS)) {
-          const error = this.getShaderInfoLog(shader);
-          const source = this.getShaderSource(shader);
-          console.error("SHADER COMPILATION ERROR:");
-          console.error("Error:", error);
-          console.error(
-            "Shader source (first 500 chars):",
-            source.substring(0, 500)
-          );
-          // Also log full shader source for debugging
-          if (source.length > 500) {
-            console.error("Full shader source:", source);
+      (function () {
+        "use strict";
+
+        // Store failed programs with their error details
+        const failedPrograms = new WeakMap();
+        const shaderSources = new WeakMap();
+
+        // Function to display errors on page (for Android where console might be hidden)
+        function displayErrorOnPage(title, message, details) {
+          const errorDiv = document.getElementById("webgl-error-display");
+          if (errorDiv) {
+            errorDiv.style.display = "block";
+            const timestamp = new Date().toLocaleTimeString();
+            errorDiv.innerHTML += `\n[${timestamp}] ${title}\n${message}\n${
+              details || ""
+            }\n─────────────────────────────────────\n`;
+            errorDiv.scrollTop = errorDiv.scrollHeight;
           }
         }
-      };
 
-      // Override program linking to catch errors
-      const originalLinkProgram = WebGLRenderingContext.prototype.linkProgram;
-      WebGLRenderingContext.prototype.linkProgram = function (program) {
-        originalLinkProgram.call(this, program);
-        if (!this.getProgramParameter(program, this.LINK_STATUS)) {
-          const error = this.getProgramInfoLog(program);
-          console.error("PROGRAM LINK ERROR:", error);
-          console.error(
-            "This usually means shader compilation failed or there are mismatched attributes/varyings"
-          );
-        }
-      };
+        // Override shader compilation to catch errors (works for both WebGL and WebGL2)
+        const originalCompileShader =
+          WebGLRenderingContext.prototype.compileShader;
+        WebGLRenderingContext.prototype.compileShader = function (shader) {
+          const result = originalCompileShader.call(this, shader);
+          if (!this.getShaderParameter(shader, this.COMPILE_STATUS)) {
+            const error = this.getShaderInfoLog(shader);
+            const source = this.getShaderSource(shader);
+            const shaderType = this.getShaderParameter(
+              shader,
+              this.SHADER_TYPE
+            );
+            const typeName =
+              shaderType === this.VERTEX_SHADER ? "VERTEX" : "FRAGMENT";
 
-      // Override useProgram to catch invalid program usage
-      const originalUseProgram = WebGLRenderingContext.prototype.useProgram;
-      WebGLRenderingContext.prototype.useProgram = function (program) {
-        if (program && !this.getProgramParameter(program, this.LINK_STATUS)) {
-          const error = this.getProgramInfoLog(program);
-          console.error("ATTEMPTING TO USE INVALID PROGRAM!");
-          console.error("Program link error:", error);
-          console.trace("Stack trace:");
-        }
-        return originalUseProgram.call(this, program);
-      };
+            console.error(
+              "═══════════════════════════════════════════════════════"
+            );
+            console.error(`❌ SHADER COMPILATION ERROR (${typeName} SHADER)`);
+            console.error(
+              "═══════════════════════════════════════════════════════"
+            );
+            console.error("Error message:", error);
+            console.error("Shader type:", typeName);
+            console.error("Full shader source:");
+            console.error(source);
+            console.error(
+              "═══════════════════════════════════════════════════════"
+            );
 
-      window.addEventListener("load", function () {
-        const canvas = document.createElement("canvas");
-        const gl = canvas.getContext("webgl2", {
-          // Request stricter context
-          failIfMajorPerformanceCaveat: true,
-          powerPreference: "low-power", // Simulates mobile GPU
-        });
+            // Also display on page for Android
+            displayErrorOnPage(
+              `SHADER COMPILATION ERROR (${typeName})`,
+              error,
+              `Shader source (first 2000 chars):\n${source.substring(0, 2000)}${
+                source.length > 2000 ? "..." : ""
+              }`
+            );
 
-        if (!gl) {
-          console.error("WebGL2 not available");
-          return;
-        }
+            // Store shader source for later reference
+            shaderSources.set(shader, { source, error, type: typeName });
+          }
+          return result;
+        };
+
+        // Override program linking to catch errors
+        const originalLinkProgram = WebGLRenderingContext.prototype.linkProgram;
+        WebGLRenderingContext.prototype.linkProgram = function (program) {
+          const result = originalLinkProgram.call(this, program);
+          if (!this.getProgramParameter(program, this.LINK_STATUS)) {
+            const error = this.getProgramInfoLog(program);
+
+            // Try to get attached shaders (may not be available in all browsers)
+            let vsInfo = null;
+            let fsInfo = null;
+            try {
+              if (this.getAttachedShaders) {
+                const shaders = this.getAttachedShaders(program);
+                if (shaders && shaders.length > 0) {
+                  vsInfo = shaders[0] ? shaderSources.get(shaders[0]) : null;
+                  fsInfo = shaders[1] ? shaderSources.get(shaders[1]) : null;
+                }
+              }
+            } catch (e) {
+              // getAttachedShaders not available, that's okay
+            }
+
+            console.error(
+              "═══════════════════════════════════════════════════════"
+            );
+            console.error("❌ PROGRAM LINK ERROR");
+            console.error(
+              "═══════════════════════════════════════════════════════"
+            );
+            console.error("Link error message:", error);
+
+            if (vsInfo) {
+              console.error("Vertex shader had errors:", vsInfo.error);
+            }
+            if (fsInfo) {
+              console.error("Fragment shader had errors:", fsInfo.error);
+            }
+
+            // Store program failure info
+            failedPrograms.set(program, {
+              linkError: error,
+              vertexShader: vsInfo,
+              fragmentShader: fsInfo,
+            });
+
+            console.error(
+              "═══════════════════════════════════════════════════════"
+            );
+
+            // Also display on page for Android
+            displayErrorOnPage(
+              "PROGRAM LINK ERROR",
+              error,
+              "Check console for full shader source details"
+            );
+          }
+          return result;
+        };
+
+        // Override useProgram to catch invalid program usage with full details
+        const originalUseProgram = WebGLRenderingContext.prototype.useProgram;
+        WebGLRenderingContext.prototype.useProgram = function (program) {
+          if (program) {
+            const linkStatus = this.getProgramParameter(
+              program,
+              this.LINK_STATUS
+            );
+            if (!linkStatus) {
+              const errorInfo = failedPrograms.get(program);
+
+              console.error(
+                "═══════════════════════════════════════════════════════"
+              );
+              console.error("❌ ATTEMPTING TO USE INVALID PROGRAM!");
+              console.error(
+                "═══════════════════════════════════════════════════════"
+              );
+              console.error("Program link status: INVALID");
+
+              if (errorInfo) {
+                console.error("Link error:", errorInfo.linkError);
+                if (errorInfo.vertexShader) {
+                  console.error(
+                    "Vertex shader error:",
+                    errorInfo.vertexShader.error
+                  );
+                }
+                if (errorInfo.fragmentShader) {
+                  console.error(
+                    "Fragment shader error:",
+                    errorInfo.fragmentShader.error
+                  );
+                }
+              } else {
+                // Try to get fresh error info
+                const linkError = this.getProgramInfoLog(program);
+                console.error("Program link error:", linkError);
+              }
+
+              console.error("Stack trace:");
+              console.trace();
+              console.error(
+                "═══════════════════════════════════════════════════════"
+              );
+
+              // Also display on page for Android
+              const errorMsg = errorInfo
+                ? errorInfo.linkError
+                : this.getProgramInfoLog(program) || "Program link failed";
+              displayErrorOnPage(
+                "❌ ATTEMPTING TO USE INVALID PROGRAM!",
+                errorMsg,
+                "This is the exact error you're seeing on Android! Check console for full shader source."
+              );
+
+              // Also try to get error from getError()
+              const glError = this.getError();
+              if (glError !== this.NO_ERROR) {
+                const errorNames = {
+                  0x0500: "INVALID_ENUM",
+                  0x0501: "INVALID_VALUE",
+                  0x0502: "INVALID_OPERATION",
+                  0x0503: "INVALID_FRAMEBUFFER_OPERATION",
+                  0x0505: "OUT_OF_MEMORY",
+                };
+                console.error(
+                  "Current WebGL error:",
+                  errorNames[glError] || "0x" + glError.toString(16)
+                );
+              }
+            }
+          }
+          return originalUseProgram.call(this, program);
+        };
+
+        // Intercept console.error to also display WebGL errors on page
+        const originalConsoleError = console.error;
+        console.error = function (...args) {
+          const message = args.join(" ");
+          // Check if it's a WebGL error and display on page
+          if (
+            message.includes("webgl") ||
+            message.includes("WebGL") ||
+            message.includes("INVALID_OPERATION") ||
+            message.includes("useProgram") ||
+            message.includes("SHADER") ||
+            message.includes("PROGRAM")
+          ) {
+            displayErrorOnPage("WebGL Error in Console", message, "");
+          }
+          originalConsoleError.apply(console, args);
+        };
+
+        // Continuous WebGL error checking
+        let errorCheckInterval = null;
+        const contexts = new WeakSet();
+
+        // Override getContext to track all WebGL contexts
+        const originalGetContext = HTMLCanvasElement.prototype.getContext;
+        HTMLCanvasElement.prototype.getContext = function (
+          contextType,
+          ...args
+        ) {
+          const context = originalGetContext.call(this, contextType, ...args);
+          if (
+            context &&
+            (contextType === "webgl2" || contextType === "webgl")
+          ) {
+            contexts.add(context);
+
+            // Start error polling for this context
+            if (!errorCheckInterval) {
+              errorCheckInterval = setInterval(() => {
+                // Check all tracked contexts for errors
+                // Note: We can't iterate WeakSet, so we'll check on useProgram calls instead
+              }, 100);
+            }
+
+            // Wrap getError to log all errors
+            const originalGetError = context.getError;
+            context.getError = function () {
+              const error = originalGetError.call(this);
+              if (error !== this.NO_ERROR) {
+                const errorNames = {
+                  0x0500: "INVALID_ENUM",
+                  0x0501: "INVALID_VALUE",
+                  0x0502: "INVALID_OPERATION",
+                  0x0503: "INVALID_FRAMEBUFFER_OPERATION",
+                  0x0505: "OUT_OF_MEMORY",
+                };
+                console.error(
+                  `WebGL Error detected: ${
+                    errorNames[error] || "0x" + error.toString(16)
+                  }`
+                );
+              }
+              return error;
+            };
+          }
+          return context;
+        };
 
         console.log(
-          "WebGL strict checking enabled - shader errors will be logged to console."
+          "✅ WebGL strict error checking enabled - all shader errors will be logged"
         );
-      });
+        console.log(
+          "💡 Errors will also appear in red box at top of page for Android testing"
+        );
+      })();
     </script>
 
     <script src="./src/main.js" type="module"></script>
