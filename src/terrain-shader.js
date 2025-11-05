@@ -135,7 +135,7 @@ vec4 _ComputeLighting(vec3 worldSpaceNormal, vec3 sunDir, vec3 viewDirection) {
   return lighting;
 }
 
-vec4 _TerrainBlend_4(vec4 samples[4]) {
+vec4 _TerrainBlend_4(highp vec4 samples[4]) {
   float depth = 0.2;
   float ma = max(
       samples[0].w,
@@ -161,7 +161,7 @@ vec4 _TerrainBlend_4(vec4 samples[4]) {
   return numer / denom;
 }
 
-vec4 _TerrainBlend_4_lerp(vec4 samples[4]) {
+vec4 _TerrainBlend_4_lerp(highp vec4 samples[4]) {
   return (
       samples[0] * samples[0].w + samples[1] * samples[1].w +
       samples[2] * samples[2].w + samples[3] * samples[3].w);
@@ -332,13 +332,23 @@ void main() {
   vec3 eyeDirection = normalize(-vVSPos);
   vec3 sunDir = normalize(sunDirection);
 
-  float weightIndices[4] = float[4](vWeights1.x, vWeights1.y, vWeights1.z, vWeights1.w);
-  float weightValues[4] = float[4](vWeights2.x, vWeights2.y, vWeights2.z, vWeights2.w);
+  // Initialize arrays element by element (Android WebGL compatibility)
+  highp float weightIndices[4];
+  weightIndices[0] = vWeights1.x;
+  weightIndices[1] = vWeights1.y;
+  weightIndices[2] = vWeights1.z;
+  weightIndices[3] = vWeights1.w;
+  
+  highp float weightValues[4];
+  weightValues[0] = vWeights2.x;
+  weightValues[1] = vWeights2.y;
+  weightValues[2] = vWeights2.z;
+  weightValues[3] = vWeights2.w;
 
   // TRIPLANAR SPLATTING w/ NORMALS & UVS
   vec3 worldSpaceNormal = normalize(vNormal);
-  vec4 diffuseSamples[4];
-  vec4 normalSamples[4];
+  highp vec4 diffuseSamples[4];
+  highp vec4 normalSamples[4];
 
   for (int i = 0; i < 4; ++i) {
     vec4 d = vec4(0.0);
