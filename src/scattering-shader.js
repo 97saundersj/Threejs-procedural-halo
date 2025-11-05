@@ -1,6 +1,8 @@
 export const scattering_shader = (function () {
   const _VS = `#version 300 es
 
+precision highp float;
+
   #define saturate(a) clamp( a, 0.0, 1.0 )
 
   out vec2 vUv;
@@ -12,6 +14,9 @@ export const scattering_shader = (function () {
   `;
 
   const _PS = `#version 300 es
+
+precision highp float;
+
   #include <packing>
 
   #define saturate(a) clamp( a, 0.0, 1.0 )
