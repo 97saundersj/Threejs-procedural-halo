@@ -15,6 +15,9 @@ export const ocean = (function () {
       this._params = params;
       this._params.guiParams = this._params.guiParams || {};
 
+      // Ocean minimum cell size (double terrain's for better performance - fewer chunks)
+      this._minCellSize = terrain_constants.QT_MIN_CELL_SIZE * 2000.0;
+
       // Ocean should be at sea level
       // For planet shapes: slightly above terrain base radius (add 10 units)
       // For ring shapes: slightly below terrain base radius (subtract 10 units)
@@ -472,7 +475,7 @@ export const ocean = (function () {
 
       const q = new quadtree.CubeQuadTree({
         radius: this._radius,
-        min_node_size: terrain_constants.QT_MIN_CELL_SIZE,
+        min_node_size: this._minCellSize,
       });
 
       const cameraPosition = this._params.camera.position.clone();
@@ -550,6 +553,16 @@ export const ocean = (function () {
     UpdateSunDirection(sunDirection) {
       if (this._material && this._material.uniforms.sunDirection) {
         this._material.uniforms.sunDirection.value.copy(sunDirection);
+      }
+    }
+
+    SetEnabled(enabled) {
+      if (enabled) {
+        // Add ocean groups back to scene
+        this._params.scene.add(...this._groups);
+      } else {
+        // Remove ocean groups from scene
+        this._params.scene.remove(...this._groups);
       }
     }
   }

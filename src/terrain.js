@@ -473,6 +473,16 @@ export const terrain = (function () {
       return this._scenery;
     }
 
+    SetEnabled(enabled) {
+      if (enabled) {
+        // Add terrain groups back to scene
+        this._params.scene.add(...this._groups);
+      } else {
+        // Remove terrain groups from scene
+        this._params.scene.remove(...this._groups);
+      }
+    }
+
     IsReady() {
       // Terrain is ready when:
       // 1. Builder is not busy (no chunks being built)

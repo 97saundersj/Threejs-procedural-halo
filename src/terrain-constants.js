@@ -1,19 +1,17 @@
-export const terrain_constants = (function () {
-  return {
-    QT_MIN_CELL_SIZE: 25,
-    QT_MIN_CELL_RESOLUTION: 48,
-    PLANET_RADIUS: 400000.0,
-    RING_MAJOR_RADIUS: 400000.0,
-    RING_LATITUDE_CUTOFF: 0.02,
-    RING_LATITUDE_FADE: 0.05,
-    RING_DROP_EXPONENT: 1.5,
-    RING_CULL_LATITUDE: 0.08,
-    RING_OFFSET: 800000.0,
+export const terrain_constants = {
+  QT_MIN_CELL_SIZE: 25,
+  QT_MIN_CELL_RESOLUTION: 48,
+  PLANET_RADIUS: 400000.0,
+  RING_MAJOR_RADIUS: 400000.0,
+  RING_LATITUDE_CUTOFF: 0.02,
+  RING_LATITUDE_FADE: 0.05,
+  RING_DROP_EXPONENT: 1.5,
+  RING_CULL_LATITUDE: 0.08,
+  RING_OFFSET: 800000.0,
 
-    NOISE_HEIGHT: 2000.0,
-    NOISE_SCALE: 18000.0,
+  NOISE_HEIGHT: 2000.0,
+  NOISE_SCALE: 18000.0,
 
-    // Centralized lighting constants
-    AMBIENT_LIGHT_INTENSITY: 0.01, // Minimal starlight for dark side
-  };
-})();
+  // Centralized lighting constants
+  AMBIENT_LIGHT_INTENSITY: 0.01, // Minimal starlight for dark side
+};

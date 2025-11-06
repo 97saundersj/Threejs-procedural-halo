@@ -41,6 +41,9 @@ export const graphics = (function () {
         return false;
       }
 
+      // Initialize resolution scale before using it
+      this._resolutionScale = 1.0;
+
       const canvas = document.createElement("canvas");
       const context = canvas.getContext("webgl2", { alpha: false });
 
@@ -97,9 +100,14 @@ export const graphics = (function () {
         generateMipmaps: false,
       };
 
+      // Initialize render target with resolution scale
+      const targetWidth = Math.floor(window.innerWidth * this._resolutionScale);
+      const targetHeight = Math.floor(
+        window.innerHeight * this._resolutionScale
+      );
       this._target = new THREE.WebGLRenderTarget(
-        window.innerWidth,
-        window.innerHeight,
+        targetWidth,
+        targetHeight,
         params
       );
       this._target.stencilBuffer = false;
@@ -140,6 +148,8 @@ export const graphics = (function () {
 
       this._CreateLights();
 
+      this._atmosphereEnabled = true;
+
       return true;
     }
 
@@ -171,9 +181,15 @@ export const graphics = (function () {
     _OnWindowResize() {
       this._camera.aspect = window.innerWidth / window.innerHeight;
       this._camera.updateProjectionMatrix();
+      // Renderer size stays at full window size for display
       this._threejs.setSize(window.innerWidth, window.innerHeight);
       this._composer.setSize(window.innerWidth, window.innerHeight);
-      this._target.setSize(window.innerWidth, window.innerHeight);
+      // Render target size is scaled by resolution scale
+      const targetWidth = Math.floor(window.innerWidth * this._resolutionScale);
+      const targetHeight = Math.floor(
+        window.innerHeight * this._resolutionScale
+      );
+      this._target.setSize(targetWidth, targetHeight);
     }
 
     get Scene() {
@@ -194,37 +210,60 @@ export const graphics = (function () {
     }
 
     Render(timeInSeconds) {
-      this._threejs.setRenderTarget(this._target);
+      if (this._atmosphereEnabled) {
+        // Render to render target for post-processing
+        this._threejs.setRenderTarget(this._target);
 
-      this._threejs.clear();
-      this._threejs.render(this._scene, this._camera);
-      //this._composer.render();
+        this._threejs.clear();
+        this._threejs.render(this._scene, this._camera);
+        //this._composer.render();
 
-      this._threejs.setRenderTarget(null);
+        this._threejs.setRenderTarget(null);
 
-      const forward = new THREE.Vector3();
-      this._camera.getWorldDirection(forward);
+        const forward = new THREE.Vector3();
+        this._camera.getWorldDirection(forward);
 
-      this._depthPass.uniforms.inverseProjection.value =
-        this._camera.projectionMatrixInverse;
-      this._depthPass.uniforms.inverseView.value = this._camera.matrixWorld;
-      this._depthPass.uniforms.tDiffuse.value = this._target.texture;
-      this._depthPass.uniforms.tDepth.value = this._target.depthTexture;
-      this._depthPass.uniforms.cameraNear.value = this._camera.near;
-      this._depthPass.uniforms.cameraFar.value = this._camera.far;
-      this._depthPass.uniforms.cameraPosition.value = this._camera.position;
-      this._depthPass.uniforms.cameraForward.value = forward;
-      this._depthPass.uniforms.planetPosition.value = new THREE.Vector3(
-        0,
-        0,
-        0
-      );
-      // Sun direction will be updated externally via UpdateSunDirection
-      this._depthPass.uniformsNeedUpdate = true;
+        this._depthPass.uniforms.inverseProjection.value =
+          this._camera.projectionMatrixInverse;
+        this._depthPass.uniforms.inverseView.value = this._camera.matrixWorld;
+        this._depthPass.uniforms.tDiffuse.value = this._target.texture;
+        this._depthPass.uniforms.tDepth.value = this._target.depthTexture;
+        this._depthPass.uniforms.cameraNear.value = this._camera.near;
+        this._depthPass.uniforms.cameraFar.value = this._camera.far;
+        this._depthPass.uniforms.cameraPosition.value = this._camera.position;
+        this._depthPass.uniforms.cameraForward.value = forward;
+        this._depthPass.uniforms.planetPosition.value = new THREE.Vector3(
+          0,
+          0,
+          0
+        );
+        // Sun direction will be updated externally via UpdateSunDirection
+        this._depthPass.uniformsNeedUpdate = true;
 
-      this._threejs.render(this._postScene, this._postCamera);
+        // Render atmosphere (post-processing pass)
+        this._threejs.render(this._postScene, this._postCamera);
+      } else {
+        // Render directly to screen when atmosphere is disabled
+        this._threejs.setRenderTarget(null);
+        this._threejs.clear();
+        this._threejs.render(this._scene, this._camera);
+      }
 
       this._stats.update();
+    }
+
+    SetAtmosphereEnabled(enabled) {
+      this._atmosphereEnabled = enabled;
+    }
+
+    SetResolutionScale(scale) {
+      this._resolutionScale = scale;
+      // Update render target size with new scale
+      const targetWidth = Math.floor(window.innerWidth * this._resolutionScale);
+      const targetHeight = Math.floor(
+        window.innerHeight * this._resolutionScale
+      );
+      this._target.setSize(targetWidth, targetHeight);
     }
   }
 

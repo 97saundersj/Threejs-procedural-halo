@@ -82,7 +82,7 @@ class ProceduralTerrain_Demo extends game.Game {
       }),
       0.5
     );
-
+    /*
     const ringworldManager = new terrain.TerrainChunkManager({
       camera: this.graphics_.Camera,
       scene: this.graphics_.Scene,
@@ -101,7 +101,7 @@ class ProceduralTerrain_Demo extends game.Game {
       },
     });
     this._AddEntity("_ringworld", ringworldManager, 1.0);
-
+*/
     // Create controls (they'll be disabled until pointer lock is activated)
     this._controls = new controls.FPSControls({
       camera: this.graphics_.Camera,
@@ -164,6 +164,9 @@ class ProceduralTerrain_Demo extends game.Game {
 
     // Initialize sun direction on all systems
     this._UpdateSunDirection();
+
+    // Wire up GUI callbacks for enable/disable controls
+    this._WireUpEnableDisableCallbacks();
   }
 
   _UpdateSunDirection() {
@@ -216,11 +219,53 @@ class ProceduralTerrain_Demo extends game.Game {
 
   _CreateGUI() {
     this._guiParams = {
-      general: {},
+      general: {
+        terrainEnabled: true,
+        oceanEnabled: true,
+        atmosphereEnabled: true,
+        sceneryEnabled: true,
+        resolutionScale: 1.0,
+        qtMinCellSize: terrain_constants.QT_MIN_CELL_SIZE,
+        qtMinCellResolution: terrain_constants.QT_MIN_CELL_RESOLUTION,
+      },
     };
     this._gui = new GUI();
 
     const generalRollup = this._gui.addFolder("General");
+    this._terrainController = generalRollup.add(
+      this._guiParams.general,
+      "terrainEnabled"
+    );
+    this._oceanController = generalRollup.add(
+      this._guiParams.general,
+      "oceanEnabled"
+    );
+    this._atmosphereController = generalRollup.add(
+      this._guiParams.general,
+      "atmosphereEnabled"
+    );
+    this._sceneryController = generalRollup.add(
+      this._guiParams.general,
+      "sceneryEnabled"
+    );
+    this._resolutionScaleController = generalRollup.add(
+      this._guiParams.general,
+      "resolutionScale",
+      0.25,
+      2.0
+    );
+    this._qtMinCellSizeController = generalRollup.add(
+      this._guiParams.general,
+      "qtMinCellSize",
+      1,
+      10000
+    );
+    this._qtMinCellResolutionController = generalRollup.add(
+      this._guiParams.general,
+      "qtMinCellResolution",
+      8,
+      128
+    );
     this._gui.close();
   }
 
@@ -316,6 +361,81 @@ class ProceduralTerrain_Demo extends game.Game {
       const percent = ((acceleration - minAcc) / (maxAcc - minAcc)) * 100;
 
       accelerationDisplay.textContent = `Acceleration: ${Math.round(percent)}%`;
+    }
+  }
+
+  _WireUpEnableDisableCallbacks() {
+    // Wire up terrain enable/disable
+    if (this._terrainController) {
+      this._terrainController.onChange((value) => {
+        if (this._terrainManager) {
+          this._terrainManager.SetEnabled(value);
+        }
+      });
+    }
+
+    // Wire up ocean enable/disable
+    if (this._oceanController) {
+      this._oceanController.onChange((value) => {
+        if (this._terrainManager) {
+          const ocean = this._terrainManager.GetOcean();
+          if (ocean && ocean.SetEnabled) {
+            ocean.SetEnabled(value);
+          }
+        }
+      });
+    }
+
+    // Wire up atmosphere enable/disable
+    if (this._atmosphereController) {
+      this._atmosphereController.onChange((value) => {
+        if (this.graphics_ && this.graphics_.SetAtmosphereEnabled) {
+          this.graphics_.SetAtmosphereEnabled(value);
+        }
+      });
+    }
+
+    // Wire up scenery enable/disable
+    if (this._sceneryController) {
+      this._sceneryController.onChange((value) => {
+        if (this._terrainManager) {
+          const scenery = this._terrainManager.GetScenery();
+          if (scenery && scenery.SetEnabled) {
+            scenery.SetEnabled(value);
+          }
+        }
+      });
+    }
+
+    // Wire up resolution scale
+    if (this._resolutionScaleController) {
+      this._resolutionScaleController.onChange((value) => {
+        if (this.graphics_ && this.graphics_.SetResolutionScale) {
+          this.graphics_.SetResolutionScale(value);
+        }
+      });
+    }
+
+    // Wire up QT_MIN_CELL_SIZE
+    if (this._qtMinCellSizeController) {
+      this._qtMinCellSizeController.onChange((value) => {
+        terrain_constants.QT_MIN_CELL_SIZE = value;
+        // Update ocean's min cell size if it exists
+        if (this._terrainManager) {
+          const ocean = this._terrainManager.GetOcean();
+          if (ocean && ocean._minCellSize !== undefined) {
+            ocean._minCellSize = value * 2000.0;
+          }
+        }
+      });
+    }
+
+    // Wire up QT_MIN_CELL_RESOLUTION
+    if (this._qtMinCellResolutionController) {
+      this._qtMinCellResolutionController.onChange((value) => {
+        terrain_constants.QT_MIN_CELL_RESOLUTION = value;
+        // Changes will take effect when new chunks are created
+      });
     }
   }
 }

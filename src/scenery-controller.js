@@ -115,6 +115,9 @@ void main() {
       // Track which chunks have already spawned trees to avoid re-spawning
       this._processedChunks = new Set();
 
+      // Track enabled state
+      this._enabled = true;
+
       // Track tree spawn progress per chunk (how many trees have been attempted)
       this._chunkSpawnProgress = new Map(); // key -> number of trees attempted
 
@@ -557,6 +560,11 @@ void main() {
     }
 
     Update() {
+      // Skip update if disabled
+      if (!this._enabled) {
+        return;
+      }
+
       // Use terrain chunks instead of building our own quadtree
       const chunks = this._terrainManager.GetChunks();
 
@@ -833,6 +841,31 @@ void main() {
       for (const chunkKey of this._chunkSpawnProgress.keys()) {
         if (!currentChunks.has(chunkKey)) {
           this._chunkSpawnProgress.delete(chunkKey);
+        }
+      }
+    }
+
+    SetEnabled(enabled) {
+      this._enabled = enabled;
+      if (enabled) {
+        // Add all scenery objects back to scene
+        for (const [
+          worldPosKey,
+          scenery,
+        ] of this._sceneryByWorldPos.entries()) {
+          if (scenery && scenery.parent !== this._scene) {
+            this._scene.add(scenery);
+          }
+        }
+      } else {
+        // Remove all scenery objects from scene
+        for (const [
+          worldPosKey,
+          scenery,
+        ] of this._sceneryByWorldPos.entries()) {
+          if (scenery && scenery.parent === this._scene) {
+            this._scene.remove(scenery);
+          }
         }
       }
     }
