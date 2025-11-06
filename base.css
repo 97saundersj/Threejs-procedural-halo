@@ -39,6 +39,12 @@
   position: absolute;
 }
 
+html,
+body {
+  height: 100%;
+  overflow: hidden;
+}
+
 body {
   background: #000000;
   margin: 0;
@@ -74,4 +80,117 @@ body {
   border-radius: 5px;
   pointer-events: none;
   z-index: 1000;
+}
+
+/* Mobile Controls */
+#mobile-controls {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  display: none;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: flex-end;
+  padding: 20px;
+  pointer-events: none;
+  z-index: 2000;
+  gap: 20px;
+}
+
+.mobile-btn {
+  min-width: 60px;
+  min-height: 60px;
+  font-size: 2em;
+  border: 3px solid rgba(255, 255, 255, 0.8);
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.6);
+  color: white;
+  cursor: pointer;
+  user-select: none;
+  touch-action: none;
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.1s ease;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.5);
+}
+
+.mobile-btn:active {
+  background: rgba(255, 255, 255, 0.3);
+  transform: scale(0.95);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+}
+
+.mobile-btn-movement {
+  font-size: 1.8em;
+}
+
+.mobile-btn-accel {
+  font-size: 2.5em;
+  font-weight: bold;
+}
+
+.mobile-movement-pad {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  pointer-events: none;
+}
+
+.mobile-movement-row {
+  display: flex;
+  flex-direction: row;
+  gap: 5px;
+  pointer-events: none;
+}
+
+.mobile-vertical-pad {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  pointer-events: none;
+}
+
+.mobile-accel-pad {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  pointer-events: none;
+}
+
+/* Show mobile controls when explicitly enabled */
+#mobile-controls.mobile-controls-visible {
+  display: flex !important;
+}
+
+/* Hide mobile controls on non-touch devices */
+@media (hover: hover) and (pointer: fine) {
+  #mobile-controls:not(.mobile-controls-visible) {
+    display: none !important;
+  }
+}
+
+/* Responsive adjustments for smaller screens */
+@media (max-width: 480px) {
+  .mobile-btn {
+    min-width: 50px;
+    min-height: 50px;
+    font-size: 1.5em;
+  }
+
+  .mobile-btn-movement {
+    font-size: 1.4em;
+  }
+
+  .mobile-btn-accel {
+    font-size: 2em;
+  }
+
+  #mobile-controls {
+    padding: 15px;
+    gap: 15px;
+  }
 }

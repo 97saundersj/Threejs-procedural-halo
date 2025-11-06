@@ -8,6 +8,53 @@
     <div id="target"></div>
     <div id="acceleration-display">Acceleration: 50%</div>
     <div id="fps-display">FPS: 60</div>
+
+    <!-- Mobile Controls -->
+    <div id="mobile-controls" style="display: none">
+      <!-- Movement Buttons -->
+      <div class="mobile-movement-pad">
+        <button id="mobile-btn-forward" class="mobile-btn mobile-btn-movement">
+          ↑
+        </button>
+        <div class="mobile-movement-row">
+          <button id="mobile-btn-left" class="mobile-btn mobile-btn-movement">
+            ←
+          </button>
+          <button id="mobile-btn-right" class="mobile-btn mobile-btn-movement">
+            →
+          </button>
+        </div>
+        <button id="mobile-btn-backward" class="mobile-btn mobile-btn-movement">
+          ↓
+        </button>
+      </div>
+
+      <!-- Vertical Movement Buttons -->
+      <div class="mobile-vertical-pad">
+        <button id="mobile-btn-up" class="mobile-btn mobile-btn-movement">
+          ↑
+        </button>
+        <button id="mobile-btn-down" class="mobile-btn mobile-btn-movement">
+          ↓
+        </button>
+      </div>
+
+      <!-- Acceleration Buttons -->
+      <div class="mobile-accel-pad">
+        <button
+          id="mobile-btn-accel-increase"
+          class="mobile-btn mobile-btn-accel"
+        >
+          +
+        </button>
+        <button
+          id="mobile-btn-accel-decrease"
+          class="mobile-btn mobile-btn-accel"
+        >
+          −
+        </button>
+      </div>
+    </div>
     <div
       id="webgl-error-display"
       style="

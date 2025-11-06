@@ -129,11 +129,43 @@ void main() {
       this._lastLeftTrigger = null;
       this._lastRightTrigger = null;
 
+      // Touch controls - detect touch devices more robustly
+      // Check for touch events, maxTouchPoints, or user agent hints
+      const hasTouchEvents = "ontouchstart" in window || navigator.maxTouchPoints > 0;
+      const isMobileUA = 
+        (navigator.userAgentData && navigator.userAgentData.mobile) ||
+        /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+          navigator.userAgent
+        );
+      
+      this._isTouchDevice = hasTouchEvents || isMobileUA;
+      
+      // Debug logging (can be removed in production)
+      if (this._isTouchDevice) {
+        console.log("Mobile controls enabled:", {
+          hasTouchEvents,
+          isMobileUA,
+          userAgent: navigator.userAgent,
+          maxTouchPoints: navigator.maxTouchPoints
+        });
+      }
+      this._touchLookActive = false;
+      this._lastTouchX = 0;
+      this._lastTouchY = 0;
+      this._touchSensitivity = {
+        yaw: 0.005,
+        pitch: 0.005,
+      };
+
       this._camera = params.camera;
       this._camera.updateMatrixWorld(true);
       this._logDepthBufFC = 2.0 / (Math.log(this._camera.far + 1.0) / Math.LN2);
 
       this._SetupPointerLock();
+
+      if (this._isTouchDevice) {
+        this._SetupTouchControls();
+      }
 
       this._wheelHandler = (e) => this._OnMouseWheel(e);
       document.addEventListener("wheel", this._wheelHandler, { passive: true });
@@ -371,7 +403,10 @@ void main() {
           ) {
             this._enabled = true;
           } else {
-            this._enabled = false;
+            // Only disable on non-touch devices (mobile controls handle their own enabled state)
+            if (!this._isTouchDevice) {
+              this._enabled = false;
+            }
           }
         };
         const lockError = (event) => {
@@ -461,6 +496,186 @@ void main() {
           this._gamepad = gamepads[i];
           break;
         }
+      }
+    }
+
+    _SetupTouchControls() {
+      // Show mobile controls UI
+      const mobileControls = document.getElementById("mobile-controls");
+      if (mobileControls) {
+        mobileControls.style.display = "flex";
+        mobileControls.classList.add("mobile-controls-visible");
+      }
+
+      // Enable controls automatically on mobile
+      this._enabled = true;
+
+      // Touch look (camera rotation) - handle touch drag on canvas
+      const domElement = this._params.domElement;
+
+      this._touchStartHandler = (e) => this._OnTouchStart(e);
+      this._touchMoveHandler = (e) => this._OnTouchMove(e);
+      this._touchEndHandler = (e) => this._OnTouchEnd(e);
+
+      domElement.addEventListener("touchstart", this._touchStartHandler, {
+        passive: false,
+      });
+      domElement.addEventListener("touchmove", this._touchMoveHandler, {
+        passive: false,
+      });
+      domElement.addEventListener("touchend", this._touchEndHandler, {
+        passive: false,
+      });
+      domElement.addEventListener("touchcancel", this._touchEndHandler, {
+        passive: false,
+      });
+
+      // Movement buttons
+      this._SetupMovementButtons();
+
+      // Acceleration buttons
+      this._SetupAccelerationButtons();
+    }
+
+    _SetupMovementButtons() {
+      const buttons = {
+        backward: document.getElementById("mobile-btn-forward"), // Inverted: forward button moves backward
+        forward: document.getElementById("mobile-btn-backward"), // Inverted: backward button moves forward
+        left: document.getElementById("mobile-btn-left"),
+        right: document.getElementById("mobile-btn-right"),
+        up: document.getElementById("mobile-btn-up"),
+        down: document.getElementById("mobile-btn-down"),
+      };
+
+      for (const [direction, button] of Object.entries(buttons)) {
+        if (button) {
+          const touchStart = (e) => {
+            e.preventDefault();
+            this._move[direction] = true;
+          };
+          const touchEnd = (e) => {
+            e.preventDefault();
+            this._move[direction] = false;
+          };
+
+          button.addEventListener("touchstart", touchStart, { passive: false });
+          button.addEventListener("touchend", touchEnd, { passive: false });
+          button.addEventListener("touchcancel", touchEnd, { passive: false });
+        }
+      }
+    }
+
+    _SetupAccelerationButtons() {
+      const increaseBtn = document.getElementById("mobile-btn-accel-increase");
+      const decreaseBtn = document.getElementById("mobile-btn-accel-decrease");
+
+      if (increaseBtn) {
+        const touchStart = (e) => {
+          e.preventDefault();
+          this._AdjustAcceleration(0.5);
+        };
+        increaseBtn.addEventListener("touchstart", touchStart, {
+          passive: false,
+        });
+      }
+
+      if (decreaseBtn) {
+        const touchStart = (e) => {
+          e.preventDefault();
+          this._AdjustAcceleration(-0.5);
+        };
+        decreaseBtn.addEventListener("touchstart", touchStart, {
+          passive: false,
+        });
+      }
+    }
+
+    _AdjustAcceleration(change) {
+      const current = this._params.guiParams.camera.acceleration_x;
+      const next = Math.max(
+        this._minAcceleration,
+        Math.min(this._maxAcceleration, current + change)
+      );
+
+      if (next !== current) {
+        this._params.guiParams.camera.acceleration_x = next;
+        this._acceleration.set(next, next, next);
+
+        if (this._speedController) {
+          this._speedController.updateDisplay();
+        }
+      }
+    }
+
+    _OnTouchStart(e) {
+      if (!this._enabled || e.touches.length === 0) {
+        return;
+      }
+
+      // Check if touch is on a button (don't start look if so)
+      const touch = e.touches[0];
+      const target = document.elementFromPoint(touch.clientX, touch.clientY);
+      if (target && target.closest("#mobile-controls")) {
+        return;
+      }
+
+      // Start touch look
+      this._touchLookActive = true;
+      this._lastTouchX = touch.clientX;
+      this._lastTouchY = touch.clientY;
+      e.preventDefault();
+    }
+
+    _OnTouchMove(e) {
+      if (!this._enabled || !this._touchLookActive || e.touches.length === 0) {
+        return;
+      }
+
+      const touch = e.touches[0];
+      const deltaX = touch.clientX - this._lastTouchX;
+      const deltaY = touch.clientY - this._lastTouchY;
+
+      if (deltaX === 0 && deltaY === 0) {
+        return;
+      }
+
+      const camera = this._camera;
+
+      if (deltaX !== 0) {
+        this._yawAxis
+          .set(0, 1, 0)
+          .applyQuaternion(camera.quaternion)
+          .normalize();
+        this._yawQuaternion.setFromAxisAngle(
+          this._yawAxis,
+          -deltaX * this._touchSensitivity.yaw
+        );
+        camera.quaternion.premultiply(this._yawQuaternion);
+      }
+
+      if (deltaY !== 0) {
+        this._pitchAxis
+          .set(1, 0, 0)
+          .applyQuaternion(camera.quaternion)
+          .normalize();
+        this._pitchQuaternion.setFromAxisAngle(
+          this._pitchAxis,
+          -deltaY * this._touchSensitivity.pitch
+        );
+        camera.quaternion.premultiply(this._pitchQuaternion);
+      }
+
+      camera.quaternion.normalize();
+      camera.updateMatrixWorld(true);
+
+      this._lastTouchX = touch.clientX;
+      this._lastTouchY = touch.clientY;
+      e.preventDefault();
+    }
+
+    _OnTouchEnd(e) {
+      if (e.touches.length === 0) {
+        this._touchLookActive = false;
       }
     }
 
