@@ -309,6 +309,9 @@ void main() {
     }
 
     _OnMouseDown(event) {
+      // Object placement disabled
+      return;
+      
       if (!this._enabled || event.button !== 0) {
         return;
       }

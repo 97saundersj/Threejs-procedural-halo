@@ -6,6 +6,7 @@ import { terrain } from "./terrain.js";
 import { sun } from "./sun.js";
 import { terrain_constants } from "./terrain-constants.js";
 import { camera_track } from "./camera-track.js";
+import { scene_manager } from "./scene-manager.js";
 
 let _APP = null;
 
@@ -17,63 +18,70 @@ class ProceduralTerrain_Demo extends game.Game {
   _OnInitialize() {
     this._CreateGUI();
 
-    // Target position (ground spawn position)
-    const targetPosition = new THREE.Vector3(
-      355898.9978932907,
-      -16169.249553939484,
-      -181920.2108868533
+    // Initialize scene manager
+    const sceneManager = new scene_manager.SceneManager();
+    this._currentSceneType = sceneManager.GetSceneTypeFromURL();
+
+    // Get camera positions and targets from scene manager
+    const orbitPosition = sceneManager.GetCameraPosition(
+      this._currentSceneType
     );
-    const targetQuaternion = new THREE.Quaternion(
-      0.3525209450519473,
-      0.6189868049149101,
-      -0.58773147927222,
-      0.38360921119467495
+    const targetPosition = sceneManager.GetCameraTarget(this._currentSceneType);
+    const orbitQuaternion = sceneManager.GetCameraQuaternion(
+      this._currentSceneType
     );
 
-    // Calculate orbit position by extending outward from planet center
-    // Get direction from planet center to target position
-    const planetCenter = new THREE.Vector3(0, 0, 0);
-    const directionToTarget = targetPosition
-      .clone()
-      .sub(planetCenter)
-      .normalize();
-
-    // Calculate orbit distance (further out from planet surface)
-    const planetRadius = terrain_constants.PLANET_RADIUS;
-    const orbitDistance = planetRadius * 1.5; // 1.5x planet radius for orbit
-
-    // Orbit position is further out along the same direction
-    const orbitPosition = directionToTarget
-      .clone()
-      .multiplyScalar(orbitDistance);
+    // For planet/both scenes, use the original target quaternion
+    // For ring-only, calculate from the camera setup
+    let targetQuaternion;
+    if (this._currentSceneType === "ring") {
+      // Calculate target quaternion for ring scene
+      const tempCamera = new THREE.PerspectiveCamera();
+      tempCamera.position.copy(targetPosition);
+      tempCamera.lookAt(targetPosition.clone().add(new THREE.Vector3(0, 1, 0)));
+      targetQuaternion = tempCamera.quaternion.clone();
+    } else {
+      // Use original target quaternion for planet scenes
+      targetQuaternion = new THREE.Quaternion(
+        0.3525209450519473,
+        0.6189868049149101,
+        -0.58773147927222,
+        0.38360921119467495
+      );
+    }
 
     // Set initial camera position to orbit
     this.graphics_.Camera.position.copy(orbitPosition);
-
-    // For orbit, we want the camera to look down at the planet
-    // Use the camera's lookAt method directly to face the target position
-    // This ensures the camera is facing where we'll land
-    this.graphics_.Camera.lookAt(targetPosition);
-
-    // Store the orbit quaternion for the camera track
-    const orbitQuaternion = this.graphics_.Camera.quaternion.clone();
+    this.graphics_.Camera.quaternion.copy(orbitQuaternion);
 
     // Store target position and quaternion for later use
     this._targetPosition = targetPosition;
     this._targetQuaternion = targetQuaternion;
 
-    const terrainManager = new terrain.TerrainChunkManager({
-      camera: this.graphics_.Camera,
-      scene: this.graphics_.Scene,
-      scattering: this.graphics_._depthPass,
-      gui: this._gui,
-      guiParams: this._guiParams,
-      game: this,
-    });
-    this._AddEntity("_terrain", terrainManager, 1.0);
+    // Initialize scene entities using scene manager
+    const sceneEntities = sceneManager.InitializeScene(
+      this._currentSceneType,
+      this,
+      this.graphics_,
+      this._gui,
+      this._guiParams
+    );
 
-    // Store terrain manager reference to check if ready
-    this._terrainManager = terrainManager;
+    // Add terrain manager if it exists
+    if (sceneEntities.terrain) {
+      this._AddEntity("_terrain", sceneEntities.terrain, 1.0);
+      this._terrainManager = sceneEntities.terrain;
+    } else {
+      this._terrainManager = null;
+    }
+
+    // Add ringworld manager if it exists
+    if (sceneEntities.ringworld) {
+      this._AddEntity("_ringworld", sceneEntities.ringworld, 1.0);
+      this._ringworldManager = sceneEntities.ringworld;
+    } else {
+      this._ringworldManager = null;
+    }
 
     this._AddEntity(
       "_sun",
@@ -82,26 +90,6 @@ class ProceduralTerrain_Demo extends game.Game {
       }),
       0.5
     );
-    /*
-    const ringworldManager = new terrain.TerrainChunkManager({
-      camera: this.graphics_.Camera,
-      scene: this.graphics_.Scene,
-      scattering: null,
-      gui: null,
-      guiParams: {},
-      game: this,
-      radius: terrain_constants.RING_MAJOR_RADIUS,
-      center: new THREE.Vector3(terrain_constants.RING_OFFSET, 0, 0),
-      shape: "ring",
-      shapeParams: {
-        latCutoff: terrain_constants.RING_LATITUDE_CUTOFF,
-        latFade: terrain_constants.RING_LATITUDE_FADE,
-        dropExponent: terrain_constants.RING_DROP_EXPONENT,
-        cullLatitude: terrain_constants.RING_CULL_LATITUDE,
-      },
-    });
-    this._AddEntity("_ringworld", ringworldManager, 1.0);
-*/
     // Create controls (they'll be disabled until pointer lock is activated)
     this._controls = new controls.FPSControls({
       camera: this.graphics_.Camera,
@@ -113,37 +101,45 @@ class ProceduralTerrain_Demo extends game.Game {
 
     this._AddEntity("_controls", this._controls, 0.0);
 
-    // Create camera track for orbit-to-ground transition
-    const transitionDuration = 3.0; // 7 seconds for transition (slightly quicker)
-    const cameraTrack = new camera_track.CameraTrack({
-      camera: this.graphics_.Camera,
-      paused: true, // Start paused until terrain is ready
-      points: [
-        {
-          time: 0.0,
-          data: {
-            pos: orbitPosition.clone(),
-            rot: orbitQuaternion.clone(),
+    // Create camera track for orbit-to-ground transition (only for planet/both scenes)
+    if (this._currentSceneType !== "ring") {
+      const transitionDuration = sceneManager.GetCameraTrackDuration(
+        this._currentSceneType
+      );
+      const cameraTrack = new camera_track.CameraTrack({
+        camera: this.graphics_.Camera,
+        paused: true, // Start paused until terrain is ready
+        points: [
+          {
+            time: 0.0,
+            data: {
+              pos: orbitPosition.clone(),
+              rot: orbitQuaternion.clone(),
+            },
           },
-        },
-        {
-          time: transitionDuration,
-          data: {
-            pos: targetPosition.clone(),
-            rot: targetQuaternion.clone(),
+          {
+            time: transitionDuration,
+            data: {
+              pos: targetPosition.clone(),
+              rot: targetQuaternion.clone(),
+            },
           },
-        },
-      ],
-    });
+        ],
+      });
 
-    // Store track info for cleanup
-    this._cameraTrack = cameraTrack;
-    this._cameraTrackDuration = transitionDuration;
-    this._cameraTrackTime = 0.0;
-    this._cameraTrackComplete = false;
-    this._cameraTrackStarted = false; // Track if camera track has started
+      // Store track info for cleanup
+      this._cameraTrack = cameraTrack;
+      this._cameraTrackDuration = transitionDuration;
+      this._cameraTrackTime = 0.0;
+      this._cameraTrackComplete = false;
+      this._cameraTrackStarted = false; // Track if camera track has started
 
-    this._AddEntity("_cameraTrack", cameraTrack, 2.0);
+      this._AddEntity("_cameraTrack", cameraTrack, 2.0);
+    } else {
+      // For ring-only scenes, no camera track needed
+      this._cameraTrack = null;
+      this._cameraTrackComplete = true; // Mark as complete so it doesn't try to run
+    }
 
     // this._AddEntity('_controls', new controls.ShipControls({
     //     camera: this.graphics_.Camera,
@@ -180,7 +176,7 @@ class ProceduralTerrain_Demo extends game.Game {
         this.graphics_.UpdateSunDirection(sunDirection);
       }
 
-      // Update terrain shader
+      // Update terrain shader (if terrain exists)
       const terrainEntity = this._entities["_terrain"];
       if (
         terrainEntity &&
@@ -190,13 +186,15 @@ class ProceduralTerrain_Demo extends game.Game {
         terrainEntity.entity.UpdateSunDirection(sunDirection);
       }
 
-      // Update ocean shader (through terrain manager)
-      const ocean = this._terrainManager && this._terrainManager.GetOcean();
-      if (ocean && ocean.UpdateSunDirection) {
-        ocean.UpdateSunDirection(sunDirection);
+      // Update ocean shader (through terrain manager, if it exists)
+      if (this._terrainManager) {
+        const ocean = this._terrainManager.GetOcean();
+        if (ocean && ocean.UpdateSunDirection) {
+          ocean.UpdateSunDirection(sunDirection);
+        }
       }
 
-      // Update ringworld terrain shader
+      // Update ringworld terrain shader (if ringworld exists)
       const ringworldEntity = this._entities["_ringworld"];
       if (
         ringworldEntity &&
@@ -206,20 +204,24 @@ class ProceduralTerrain_Demo extends game.Game {
         ringworldEntity.entity.UpdateSunDirection(sunDirection);
       }
 
-      // Update ringworld ocean shader (through ringworld manager)
-      const ringworldOcean =
-        ringworldEntity &&
-        ringworldEntity.entity &&
-        ringworldEntity.entity.GetOcean();
-      if (ringworldOcean && ringworldOcean.UpdateSunDirection) {
-        ringworldOcean.UpdateSunDirection(sunDirection);
+      // Update ringworld ocean shader (through ringworld manager, if it exists)
+      if (ringworldEntity && ringworldEntity.entity) {
+        const ringworldOcean = ringworldEntity.entity.GetOcean();
+        if (ringworldOcean && ringworldOcean.UpdateSunDirection) {
+          ringworldOcean.UpdateSunDirection(sunDirection);
+        }
       }
     }
   }
 
   _CreateGUI() {
+    // Get scene type from URL for GUI initialization
+    const sceneManager = new scene_manager.SceneManager();
+    const currentSceneType = sceneManager.GetSceneTypeFromURL();
+
     this._guiParams = {
       general: {
+        sceneType: currentSceneType,
         terrainEnabled: true,
         oceanEnabled: true,
         atmosphereEnabled: true,
@@ -232,6 +234,20 @@ class ProceduralTerrain_Demo extends game.Game {
     this._gui = new GUI();
 
     const generalRollup = this._gui.addFolder("General");
+
+    // Scene selector dropdown
+    this._sceneTypeController = generalRollup.add(
+      this._guiParams.general,
+      "sceneType",
+      ["both", "planet", "ring"]
+    );
+    this._sceneTypeController.onChange((value) => {
+      // Update URL parameter and reload page
+      const url = new URL(window.location);
+      url.searchParams.set("scene", value);
+      window.location.href = url.toString();
+    });
+
     this._terrainController = generalRollup.add(
       this._guiParams.general,
       "terrainEnabled"
@@ -294,11 +310,17 @@ class ProceduralTerrain_Demo extends game.Game {
     // Update acceleration display
     this._UpdateAccelerationDisplay();
 
-    // Handle camera track transition
-    if (!this._cameraTrackComplete && this._cameraTrack) {
+    // Handle camera track transition (only for planet/both scenes, not ring-only)
+    if (
+      !this._cameraTrackComplete &&
+      this._cameraTrack &&
+      this._currentSceneType !== "ring"
+    ) {
       // Wait for terrain to be ready before starting the transition
       if (!this._cameraTrackStarted) {
-        if (this._terrainManager && this._terrainManager.IsReady()) {
+        // For "both" scene, wait for planet terrain; for "planet" scene, wait for terrain
+        const terrainToWait = this._terrainManager;
+        if (terrainToWait && terrainToWait.IsReady()) {
           this._cameraTrackStarted = true;
           // Unpause the camera track now that terrain is ready
           if (this._cameraTrack && this._cameraTrack.SetPaused) {
