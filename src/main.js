@@ -7,6 +7,7 @@ import { sun } from "./sun.js";
 import { terrain_constants } from "./terrain-constants.js";
 import { camera_track } from "./camera-track.js";
 import { scene_manager } from "./scene-manager.js";
+import { addHaloShellToScene, addHaloExteriorShell } from "./halo-shell.js";
 
 let _APP = null;
 
@@ -81,6 +82,22 @@ class ProceduralTerrain_Demo extends game.Game {
       this._ringworldManager = sceneEntities.ringworld;
     } else {
       this._ringworldManager = null;
+    }
+
+    // Add a simple visible textured shell structure around the ring for context
+    if (this._currentSceneType === "ring" || this._currentSceneType === "both") {
+      const ringCenter = new THREE.Vector3(terrain_constants.RING_OFFSET, 0, 0);
+      this._haloShell = addHaloExteriorShell(this.graphics_.Scene, ringCenter, {
+        camera: this.graphics_.Camera,
+        radius: terrain_constants.RING_MAJOR_RADIUS * 1.01,
+        circleSegmentCount: 256,
+        deckHeight: 27000.0,
+        wallInnerDrop: 8000.0,
+        wallHeight: 5000.0,
+        color: 0xffffff,
+      });
+    } else {
+      this._haloShell = null;
     }
 
     this._AddEntity(
@@ -211,6 +228,11 @@ class ProceduralTerrain_Demo extends game.Game {
           ringworldOcean.UpdateSunDirection(sunDirection);
         }
       }
+
+      // Update halo shell lighting
+      if (this._haloShell && this._haloShell.UpdateSunDirection) {
+        this._haloShell.UpdateSunDirection(sunDirection);
+      }
     }
   }
 
@@ -229,6 +251,7 @@ class ProceduralTerrain_Demo extends game.Game {
         resolutionScale: 1.0,
         qtMinCellSize: terrain_constants.QT_MIN_CELL_SIZE,
         qtMinCellResolution: terrain_constants.QT_MIN_CELL_RESOLUTION,
+        haloShellEnabled: true,
       },
     };
     this._gui = new GUI();
@@ -282,6 +305,16 @@ class ProceduralTerrain_Demo extends game.Game {
       8,
       128
     );
+    // Toggle halo shell visibility when available
+    this._haloShellController = generalRollup.add(
+      this._guiParams.general,
+      "haloShellEnabled"
+    );
+    this._haloShellController.onChange((value) => {
+      if (this._haloShell) {
+        this._haloShell.visible = value;
+      }
+    });
     this._gui.close();
   }
 
