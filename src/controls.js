@@ -840,13 +840,7 @@ void main() {
         !this._lastRightTrigger ||
         Math.abs(this._lastRightTrigger - rightTrigger) > 0.1
       ) {
-        if (leftTrigger > 0.1 || rightTrigger > 0.1) {
-          console.log(
-            `Triggers - Left: ${leftTrigger.toFixed(
-              2
-            )}, Right: ${rightTrigger.toFixed(2)}`
-          );
-        }
+        // Removed debug log for triggers
         this._lastLeftTrigger = leftTrigger;
         this._lastRightTrigger = rightTrigger;
       }
@@ -882,8 +876,7 @@ void main() {
               if (this._speedController) {
                 this._speedController.updateDisplay();
               }
-
-              console.log(`Acceleration adjusted: ${current} -> ${next}`);
+              // Removed debug log for acceleration adjustment
             }
           }
         }
