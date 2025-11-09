@@ -83,6 +83,9 @@ export const ocean = (function () {
           ambientLightIntensity: {
             value: terrain_constants.AMBIENT_LIGHT_INTENSITY,
           },
+          planetPosition: {
+            value: new THREE.Vector3(0, 0, 0),
+          },
         },
         vertexShader: ocean_shader.VS,
         fragmentShader: ocean_shader.PS,

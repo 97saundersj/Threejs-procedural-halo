@@ -1,85 +1,5 @@
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.112.1/build/three.module.js";
 
-// Shader code for halo shell materials with logarithmic depth buffer support
-const HALO_SHELL_VS = `#version 300 es
-precision highp float;
-
-out float vFragDepth;
-out vec3 vNormal;
-out vec3 vViewPosition;
-out vec2 vUv;
-
-void main() {
-  vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-  vec4 clipPosition = projectionMatrix * mvPosition;
-  gl_Position = clipPosition;
-  vFragDepth = 1.0 + clipPosition.w;
-  vNormal = normalMatrix * normal;
-  vViewPosition = -mvPosition.xyz;
-  vUv = uv;
-}
-`;
-
-const HALO_SHELL_FS = `#version 300 es
-precision highp float;
-
-uniform vec3 color;
-uniform float logDepthBufFC;
-uniform vec3 lightDirection;
-uniform sampler2D diffuseMap;
-uniform bool useTexture;
-
-in float vFragDepth;
-in vec3 vNormal;
-in vec3 vViewPosition;
-in vec2 vUv;
-
-out vec4 out_FragColor;
-
-void main() {
-  // vNormal is in view space (normalMatrix * normal). Transform lightDirection to view space too
-  vec3 normal = normalize(vNormal);
-  vec3 lightDir = normalize(mat3(viewMatrix) * lightDirection);
-  
-  // Ensure consistent lighting for backfaces when using DoubleSide
-  if (!gl_FrontFacing) {
-    normal = -normal;
-  }
-  
-  // Simple diffuse lighting
-  float diffuse = max(dot(normal, lightDir), 0.0);
-  
-  // Get base color from texture or uniform
-  vec3 baseColor = color;
-  if (useTexture) {
-    vec4 texColor = texture(diffuseMap, vUv);
-    baseColor = texColor.rgb;
-  }
-  
-  // Ambient + diffuse (reduced ambient for more dramatic lighting)
-  vec3 ambient = baseColor * 0.05;
-  vec3 lit = ambient + baseColor * diffuse * 0.95;
-  
-  out_FragColor = vec4(lit, 1.0);
-  gl_FragDepth = log2(vFragDepth) * logDepthBufFC * 0.5;
-}
-`;
-
-function _CreateHaloShellMaterial(logDepthBufFC, color, texture = null) {
-  return new THREE.ShaderMaterial({
-    uniforms: {
-      color: { value: new THREE.Color(color) },
-      logDepthBufFC: { value: logDepthBufFC },
-      lightDirection: { value: new THREE.Vector3(1, 1, 1).normalize() },
-      diffuseMap: { value: texture },
-      useTexture: { value: texture !== null },
-    },
-    vertexShader: HALO_SHELL_VS,
-    fragmentShader: HALO_SHELL_FS,
-    side: THREE.DoubleSide,
-  });
-}
-
 // Factory for a simple ring (halo) shell geometry.
 // Creates a segmented tubular wall with an inner gap (like a habitation shell).
 // Parameters (scaled to scene units – this repo uses very large planetary scales):
@@ -89,8 +9,9 @@ function _CreateHaloShellMaterial(logDepthBufFC, color, texture = null) {
 //  - wallInnerDrop: how far inward from outer radius the inner wall is (controls deck width)
 //  - wallHeight: vertical height of the wall rising from deck top
 //  - wallThickness: radial thickness of the wall (extrusion upward forming a lip)
-//  - camera: required for logarithmic depth buffer calculations
+//  - color: base color (used if no texture provided)
 //  - texture: optional THREE.Texture to apply to the shell
+//  - normalMap: optional THREE.Texture for normal mapping
 // Returns THREE.Mesh.
 export function createProceduralHaloShell({
   circleSegmentCount = 128,
@@ -100,8 +21,8 @@ export function createProceduralHaloShell({
   wallHeight = 6000.0,
   wallThickness = 3000.0,
   color = 0x66ccff,
-  camera = null,
   texture = null,
+  normalMap = null,
 } = {}) {
   // Guard against invalid params
   circleSegmentCount = Math.max(3, circleSegmentCount);
@@ -281,37 +202,37 @@ export function createProceduralHaloShell({
     geometry.computeVertexNormals();
   }
 
-  // Calculate logarithmic depth buffer constant (same as scenery and terrain)
-  if (!camera) {
-    console.error("Camera is required for halo shell creation!");
-    return null;
+  // Create material using built-in MeshStandardMaterial
+  // Relies on renderer.logarithmicDepthBuffer for correct depth at large scales
+  const material = new THREE.MeshStandardMaterial({
+    color: new THREE.Color(color),
+    side: THREE.DoubleSide,
+    map: texture || null,
+    normalMap: normalMap || null,
+    metalness: 0.0,
+    roughness: 1.0,
+  });
+  
+  // Set reasonable normal intensity for large-scale assets
+  if (material.normalMap) {
+    material.normalScale = new THREE.Vector2(1, 1);
   }
-  const logDepthBufFC = 2.0 / (Math.log(camera.far + 1.0) / Math.LN2);
-
-  const material = _CreateHaloShellMaterial(logDepthBufFC, color, texture);
   
   const mesh = new THREE.Mesh(geometry, material);
   mesh.castShadow = true;
   mesh.receiveShadow = true;
   mesh.name = "HaloShell";
   
-  // Add method to update sun direction
+  // Add method to update sun direction (no-op for built-in materials using scene lights)
   mesh.UpdateSunDirection = function(sunDirection) {
-    if (this.material && this.material.uniforms && this.material.uniforms.lightDirection) {
-      this.material.uniforms.lightDirection.value.copy(sunDirection);
-    }
+    // Built-in material uses actual scene lights; no action needed
   };
 
   return mesh;
 }
 
 // Convenience helper to add the shell to a scene at a given center.
-// Now requires camera parameter for logarithmic depth buffer support.
 export function addHaloShellToScene(scene, center = new THREE.Vector3(), opts = {}) {
-  if (!opts.camera) {
-    console.error("Camera is required for addHaloShellToScene!");
-    return null;
-  }
   const shell = createProceduralHaloShell(opts);
   if (shell) {
     shell.position.copy(center);
@@ -322,26 +243,22 @@ export function addHaloShellToScene(scene, center = new THREE.Vector3(), opts = 
 
 // Convenience wrapper specifically for creating the textured exterior halo shell.
 // This centralizes the texture loading & parameter defaults so callers only provide
-// the essentials (camera + radius overrides). Returns the created shell (may receive
+// the essentials (radius overrides). Returns the created shell (may receive
 // texture updates asynchronously once the image finishes loading).
 export function addHaloExteriorShell(
   scene,
   center = new THREE.Vector3(),
   {
-    camera = null,
     circleSegmentCount = 256,
     radius = 400000.0,
     deckHeight = 27000.0,
     wallInnerDrop = 8000.0,
     wallHeight = 5000.0,
     color = 0xffffff,
-    texturePath = './resources/HaloExteriorTexture.png',
+  texturePath = './resources/HaloExteriorTexture.png',
+  normalMapPath = './resources/Normal_HaloExteriorTexture.png',
   } = {}
 ) {
-  if (!camera) {
-    console.error('Camera is required for addHaloExteriorShell!');
-    return null;
-  }
 
   const textureLoader = new THREE.TextureLoader();
   const haloTexture = textureLoader.load(texturePath, (texture) => {
@@ -356,9 +273,20 @@ export function addHaloExteriorShell(
     }
   });
 
-  // Create shell immediately; texture will populate as it loads
+  // Load normal map
+  const haloNormal = textureLoader.load(normalMapPath, (ntex) => {
+    ntex.wrapS = THREE.RepeatWrapping;
+    ntex.wrapT = THREE.RepeatWrapping;
+    ntex.encoding = THREE.LinearEncoding; // normal maps use linear
+    console.log('Halo normal map loaded successfully');
+    if (shell && shell.material && shell.material.uniforms && shell.material.uniforms.normalMap) {
+      shell.material.uniforms.normalMap.value = ntex;
+      shell.material.uniforms.useNormalMap.value = true;
+    }
+  });
+
+  // Create shell immediately; textures will populate as they load
   const shell = addHaloShellToScene(scene, center, {
-    camera,
     circleSegmentCount,
     radius,
     deckHeight,
@@ -366,6 +294,7 @@ export function addHaloExteriorShell(
     wallHeight,
     color,
     texture: haloTexture,
+    normalMap: haloNormal,
   });
   return shell;
 }

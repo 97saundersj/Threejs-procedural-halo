@@ -28,47 +28,6 @@ export const scenery_controller = (function () {
   const BUSH_MAX_SCALE = 1.5;
   const BUSH_COLOR = 0x2d5016; // Dark green
 
-  // Shader code for tree materials (same as debug cube shader)
-  const TREE_VS = `#version 300 es
-precision highp float;
-
-out float vFragDepth;
-
-void main() {
-  vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-  vec4 clipPosition = projectionMatrix * mvPosition;
-  gl_Position = clipPosition;
-  vFragDepth = 1.0 + clipPosition.w;
-}
-`;
-
-  const TREE_FS = `#version 300 es
-precision highp float;
-
-uniform vec3 color;
-uniform float logDepthBufFC;
-
-in float vFragDepth;
-
-out vec4 out_FragColor;
-
-void main() {
-  out_FragColor = vec4(color, 1.0);
-  gl_FragDepth = log2(vFragDepth) * logDepthBufFC * 0.5;
-}
-`;
-
-  function _CreateTreeMaterial(logDepthBufFC, color) {
-    return new THREE.ShaderMaterial({
-      uniforms: {
-        color: { value: new THREE.Color(color) },
-        logDepthBufFC: { value: logDepthBufFC },
-      },
-      vertexShader: TREE_VS,
-      fragmentShader: TREE_FS,
-    });
-  }
-
   class SceneryController {
     constructor(params) {
       this._params = params;
@@ -81,8 +40,6 @@ void main() {
         : new THREE.Vector3(0, 0, 0);
       this._shape = params.shape || "planet";
       this._shapeParams = params.shapeParams || {};
-
-      this._logDepthBufFC = 2.0 / (Math.log(this._camera.far + 1.0) / Math.LN2);
 
       // Map node keys to arrays of objects in that node
       this._objectsByNode = new Map();
@@ -178,32 +135,34 @@ void main() {
       const treeScale =
         TREE_MIN_SCALE + Math.random() * (TREE_MAX_SCALE - TREE_MIN_SCALE);
 
-      // Create trunk (brown cylinder) with shader material
+      // Create trunk (brown cylinder) with standard material
       const trunkGeometry = new THREE.CylinderGeometry(
         TREE_TRUNK_RADIUS * treeScale,
         TREE_TRUNK_RADIUS * treeScale,
         TREE_TRUNK_HEIGHT * treeScale,
         8
       );
-      const trunkMaterial = _CreateTreeMaterial(
-        this._logDepthBufFC,
-        TREE_TRUNK_COLOR
-      );
+      const trunkMaterial = new THREE.MeshStandardMaterial({
+        color: TREE_TRUNK_COLOR,
+        roughness: 1.0,
+        metalness: 0.0,
+      });
       const trunk = new THREE.Mesh(trunkGeometry, trunkMaterial);
       trunk.position.y = (TREE_TRUNK_HEIGHT * treeScale) / 2;
       trunk.castShadow = false;
       trunk.receiveShadow = false;
 
-      // Create foliage (green cone) with shader material
+      // Create foliage (green cone) with standard material
       const foliageGeometry = new THREE.ConeGeometry(
         TREE_FOLIAGE_RADIUS * treeScale,
         TREE_FOLIAGE_HEIGHT * treeScale,
         8
       );
-      const foliageMaterial = _CreateTreeMaterial(
-        this._logDepthBufFC,
-        TREE_FOLIAGE_COLOR
-      );
+      const foliageMaterial = new THREE.MeshStandardMaterial({
+        color: TREE_FOLIAGE_COLOR,
+        roughness: 1.0,
+        metalness: 0.0,
+      });
       const foliage = new THREE.Mesh(foliageGeometry, foliageMaterial);
       foliage.position.y =
         TREE_TRUNK_HEIGHT * treeScale + (TREE_FOLIAGE_HEIGHT * treeScale) / 2;
@@ -265,7 +224,11 @@ void main() {
 
       // Create rock using an icosahedron for a more natural shape
       let rockGeometry = new THREE.IcosahedronGeometry(scale, 0);
-      const rockMaterial = _CreateTreeMaterial(this._logDepthBufFC, ROCK_COLOR);
+      const rockMaterial = new THREE.MeshStandardMaterial({
+        color: ROCK_COLOR,
+        roughness: 1.0,
+        metalness: 0.0,
+      });
 
       // Convert to BufferGeometry if needed (handle old Geometry format)
       if (
@@ -371,7 +334,11 @@ void main() {
       );
       // Scale to make it more oval/ground-hugging
       bushGeometry.scale(1, BUSH_HEIGHT / BUSH_RADIUS, 1);
-      const bushMaterial = _CreateTreeMaterial(this._logDepthBufFC, BUSH_COLOR);
+      const bushMaterial = new THREE.MeshStandardMaterial({
+        color: BUSH_COLOR,
+        roughness: 1.0,
+        metalness: 0.0,
+      });
       const bushMesh = new THREE.Mesh(bushGeometry, bushMaterial);
       bushMesh.position.y = BUSH_HEIGHT * bushScale;
       bushMesh.castShadow = true;

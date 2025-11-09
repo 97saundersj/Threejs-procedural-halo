@@ -51,6 +51,8 @@ export const graphics = (function () {
         canvas: canvas,
         context: context,
         antialias: false,
+        // Enable logarithmic depth buffer so built-in materials work at planetary scale
+        logarithmicDepthBuffer: true,
       });
       this._threejs.outputEncoding = THREE.LinearEncoding;
       this._threejs.setPixelRatio(window.devicePixelRatio);
@@ -171,9 +173,10 @@ export const graphics = (function () {
 
     UpdateLights(sunDirection) {
       // Update sun light position to match sun direction
-      // Directional light position is used for direction (not position)
+      // Directional light rays travel FROM position TO target
+      // So position should be in the direction the sun is located (opposite of light ray direction)
       const lightDistance = 1000000; // Far enough for parallel rays
-      this._sunLight.position.copy(sunDirection).multiplyScalar(-lightDistance);
+      this._sunLight.position.copy(sunDirection).multiplyScalar(lightDistance);
       this._sunLight.target.position.set(0, 0, 0);
       this._sunLight.updateMatrixWorld();
     }

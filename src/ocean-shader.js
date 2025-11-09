@@ -42,24 +42,12 @@ void main() {
   // Calculate world position for wave calculations
   vec3 worldPos = (modelMatrix * vec4(position, 1.0)).xyz;
   
-  // Generate wave displacement using world-space coordinates for consistency
-  // Wave amplitudes scaled very small to avoid visible expansion/contraction
-  float waveScale = distortionScale * 0.01;  // Extremely small scale
-  float waveSize = size * 0.1;
-  
+  // Disable Gerstner waves - rely on normal map for wave detail
+  // The spherical projection makes it difficult to get appropriate wave scale
   vec3 wave = vec3(0.0);
   
-  // Multiple wave layers for more complex ocean surface
-  // Use world-space coordinates so waves look consistent across chunks
-  // Wave amplitudes: 0.5, 0.3, 0.2 units max (when waveScale = 0.01 and distortionScale = 1.0)
-  // These are barely visible but won't cause expansion/contraction artifacts
-  wave += gerstnerWave(worldPos.xz, 5.0 * waveScale, 0.0001 * waveSize, normalize(vec2(1.0, 0.5)), 0.5);
-  wave += gerstnerWave(worldPos.xz, 3.0 * waveScale, 0.00015 * waveSize, normalize(vec2(-0.5, 1.0)), 0.7);
-  wave += gerstnerWave(worldPos.xz, 2.0 * waveScale, 0.0002 * waveSize, normalize(vec2(0.8, -0.6)), 0.3);
-  
   // Displace along normal (spherical surface) in local space
-  // Note: wave displacement is now very minimal to avoid expansion artifacts
-  vec3 displacedPos = position + normal * wave.y;
+  vec3 displacedPos = position;
   
   // Calculate final world position after displacement
   vec3 finalWorldPos = (modelMatrix * vec4(displacedPos, 1.0)).xyz;
@@ -91,6 +79,7 @@ uniform vec2 layer2Speed;
 uniform float normalIntensity;
 uniform vec3 sunDirection;
 uniform float ambientLightIntensity;
+uniform vec3 planetPosition;
 
 in vec2 vUV;
 in vec3 vNormal;
@@ -106,10 +95,22 @@ void main() {
   vec3 sunDir = normalize(sunDirection);
   vec3 worldNormal = normalize(vNormal);
   
-  // Sample normal map using world-space UV coordinates with time-based animation
-  vec2 baseUV = vWorldPos.xz * uvScale;
+  // Reconstruct true world position
+  // The mesh position is set to (origin - cameraPosition) for camera-relative rendering
+  // So we need to add cameraPosition back to get the true world position
+  vec3 trueWorldPos = vWorldPos + cameraPosition;
   
-  // Animate UV coordinates by scrolling over time
+  // Sample normal map using spherical UV coordinates to avoid pole stretching
+  // Convert world position to spherical coordinates (latitude/longitude)
+  vec3 normalizedPos = normalize(trueWorldPos - planetPosition);
+  float longitude = atan(normalizedPos.z, normalizedPos.x);
+  float latitude = asin(normalizedPos.y);
+  
+  // Create UV coordinates from spherical coordinates
+  // Multiply by uvScale and a large factor to create very small wave patterns
+  vec2 baseUV = vec2(longitude, latitude) * uvScale * 100000.0;
+  
+  // Animate UV coordinates by scrolling over time (reduced speed)
   // Two layers with different speeds and directions for more complex water movement
   vec2 uv1 = baseUV + layer1Speed * time * animationSpeed;  // First layer - diagonal scroll
   vec2 uv2 = baseUV + layer2Speed * time * animationSpeed; // Second layer - different direction
@@ -163,7 +164,7 @@ void main() {
   vec3 shallowWaterColor = vec3(0.08, 0.20, 0.35);
   
   // Calculate depth (distance from center of planet)
-  float depthFactor = saturate(length(vWorldPos) / 400000.0);
+  float depthFactor = saturate(length(trueWorldPos) / 400000.0);
   vec3 waterColor = mix(deepWaterColor, shallowWaterColor, depthFactor * 0.3);
   
   // Lighting
@@ -183,7 +184,9 @@ void main() {
   finalColor += vec3(1.0) * foam * 0.2;
   
   // Bit of a hack to remove lighting on dark side of planet
-  vec3 planetNormal = normalize(vWorldPos);
+  // Use planet position to calculate proper radial normal from planet center
+  // Use trueWorldPos (not vWorldPos) since mesh position is camera-relative
+  vec3 planetNormal = normalize(trueWorldPos - planetPosition);
   float planetLighting = saturate(dot(planetNormal, sunDir));
   finalColor *= ambientLightIntensity + (1.0 - ambientLightIntensity) * planetLighting;
   
