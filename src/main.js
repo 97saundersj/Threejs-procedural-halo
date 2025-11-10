@@ -324,16 +324,34 @@ class ProceduralTerrain_Demo extends game.Game {
   _LoadBackground() {
     this.graphics_.Scene.background = new THREE.Color(0x000000);
     const loader = new THREE.CubeTextureLoader();
-    const texture = loader.load([
-      "./resources/space-posx.jpg",
-      "./resources/space-negx.jpg",
-      "./resources/space-posy.jpg",
-      "./resources/space-negy.jpg",
-      "./resources/space-posz.jpg",
-      "./resources/space-negz.jpg",
-    ]);
-    texture.colorSpace = THREE.SRGBColorSpace;
-    this.graphics_.Scene.background = texture;
+    loader.load(
+      [
+        "./resources/space-posx.jpg",
+        "./resources/space-negx.jpg",
+        "./resources/space-posy.jpg",
+        "./resources/space-negy.jpg",
+        "./resources/space-posz.jpg",
+        "./resources/space-negz.jpg",
+      ],
+      (texture) => {
+        texture.colorSpace = THREE.SRGBColorSpace;
+        texture.name = "skybox:space";
+        texture.userData = texture.userData || {};
+        texture.userData.sourcePaths = [
+          "./resources/space-posx.jpg",
+          "./resources/space-negx.jpg",
+          "./resources/space-posy.jpg",
+          "./resources/space-negy.jpg",
+          "./resources/space-posz.jpg",
+          "./resources/space-negz.jpg",
+        ];
+        this.graphics_.Scene.background = texture;
+      },
+      undefined,
+      (err) => {
+        console.error("Failed to load cube background textures", err);
+      }
+    );
   }
 
   _OnStep(timeInSeconds) {

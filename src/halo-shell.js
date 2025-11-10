@@ -44,102 +44,105 @@ export function createProceduralHaloShell({
   // Generate vertices and indices for both top and bottom halves (mirrored)
   // Top half: positive Y values
   // Bottom half: negative Y values (mirrored)
-  
+
   for (let mirror = 0; mirror < 2; mirror++) {
     const ySign = mirror === 0 ? 1 : -1; // Top half: +1, Bottom half: -1
     const baseVertexOffset = mirror * (circleSegmentCount + 1) * 4;
-    
+
     // Each segment has 4 vertices matching Unity's structure:
     // 0: Outer bottom (radiusInMeters, 0)
-    // 1: Outer top (radiusInMeters, widthInMeters) 
+    // 1: Outer top (radiusInMeters, widthInMeters)
     // 2: Inner bottom (innerRadius, widthInMeters)
     // 3: Inner wall top (innerRadius, widthInMeters + wallWidth)
     for (let i = 0; i <= circleSegmentCount; i++) {
-    const angle = i * segmentAngle;
-    const cos = Math.cos(angle);
-    const sin = Math.sin(angle);
+      const angle = i * segmentAngle;
+      const cos = Math.cos(angle);
+      const sin = Math.sin(angle);
 
-  // Vertex 0: Outer ring mid (y=0) used for deck underside
-  positions.push(cos * radius, 0, sin * radius);
-    
-  // Vertex 1: Outer ring top (deck surface outer edge)
-  positions.push(cos * radius, deckHeight * ySign, sin * radius);
-    
-    // Vertex 2: Inner ring bottom (deck surface inner edge) 
-  positions.push(cos * innerRadius, deckHeight * ySign, sin * innerRadius);
-    
-    // Vertex 3: Inner wall top (standing wall lip)
-  positions.push(cos * innerRadius, (deckHeight + wallHeight) * ySign, sin * innerRadius);
+      // Vertex 0: Outer ring mid (y=0) used for deck underside
+      positions.push(cos * radius, 0, sin * radius);
 
-    // UV mapping
-    const segmentRatio = i / circleSegmentCount;
-    const circumference = 2 * Math.PI * radius;
-    const uvScaleX = circumference / deckHeight;
+      // Vertex 1: Outer ring top (deck surface outer edge)
+      positions.push(cos * radius, deckHeight * ySign, sin * radius);
 
-  uvs.push(segmentRatio * uvScaleX, 0); // outer bottom (at y=0)
-  uvs.push(segmentRatio * uvScaleX, 1.0); // outer top (deck surface expects v=1)
-    uvs.push(segmentRatio * uvScaleX, 0); // inner bottom
-    uvs.push(segmentRatio * uvScaleX, wallHeight / deckHeight); // inner wall top
+      // Vertex 2: Inner ring bottom (deck surface inner edge)
+      positions.push(cos * innerRadius, deckHeight * ySign, sin * innerRadius);
 
-    if (i < circleSegmentCount) {
-      const a = baseVertexOffset + i * 4;
-        
-      if (mirror === 0) {
-  // TOP HALF - Normal winding order
-  // (Removed top-half outer side triangles; will add shared full-height wall later)
+      // Vertex 3: Inner wall top (standing wall lip)
+      positions.push(
+        cos * innerRadius,
+        (deckHeight + wallHeight) * ySign,
+        sin * innerRadius
+      );
 
-        // WALL TRIANGLES (18 indices total)
-        // Top surface connecting wall to exterior ring
-        indices.push(a + 3, a + 5, a + 1);
-        indices.push(a + 3, a + 7, a + 5);
+      // UV mapping
+      const segmentRatio = i / circleSegmentCount;
+      const circumference = 2 * Math.PI * radius;
+      const uvScaleX = circumference / deckHeight;
 
-        // Inner vertical wall
-        indices.push(a + 2, a + 6, a + 3);
-        indices.push(a + 6, a + 7, a + 3);
+      uvs.push(segmentRatio * uvScaleX, 0); // outer bottom (at y=0)
+      uvs.push(segmentRatio * uvScaleX, 1.0); // outer top (deck surface expects v=1)
+      uvs.push(segmentRatio * uvScaleX, 0); // inner bottom
+      uvs.push(segmentRatio * uvScaleX, wallHeight / deckHeight); // inner wall top
 
-        // Deck surface
-        indices.push(a + 2, a + 1, a + 6);
-        indices.push(a + 5, a + 6, a + 1);
-      } else {
-        // BOTTOM HALF - Reversed winding order for mirrored geometry
-  // (No outer side triangles here; shared full-height wall will be added after both halves are built)
+      if (i < circleSegmentCount) {
+        const a = baseVertexOffset + i * 4;
 
-        // WALL TRIANGLES (18 indices total)
-        // Top surface connecting wall to exterior ring
-        indices.push(a + 3, a + 1, a + 5);
-        indices.push(a + 3, a + 5, a + 7);
+        if (mirror === 0) {
+          // TOP HALF - Normal winding order
+          // (Removed top-half outer side triangles; will add shared full-height wall later)
 
-        // Inner vertical wall
-        indices.push(a + 2, a + 3, a + 6);
-        indices.push(a + 6, a + 3, a + 7);
+          // WALL TRIANGLES (18 indices total)
+          // Top surface connecting wall to exterior ring
+          indices.push(a + 3, a + 5, a + 1);
+          indices.push(a + 3, a + 7, a + 5);
 
-        // Deck surface (bottom half)
-        indices.push(a + 2, a + 6, a + 1);
-        indices.push(a + 5, a + 1, a + 6);
+          // Inner vertical wall
+          indices.push(a + 2, a + 6, a + 3);
+          indices.push(a + 6, a + 7, a + 3);
+
+          // Deck surface
+          indices.push(a + 2, a + 1, a + 6);
+          indices.push(a + 5, a + 6, a + 1);
+        } else {
+          // BOTTOM HALF - Reversed winding order for mirrored geometry
+          // (No outer side triangles here; shared full-height wall will be added after both halves are built)
+
+          // WALL TRIANGLES (18 indices total)
+          // Top surface connecting wall to exterior ring
+          indices.push(a + 3, a + 1, a + 5);
+          indices.push(a + 3, a + 5, a + 7);
+
+          // Inner vertical wall
+          indices.push(a + 2, a + 3, a + 6);
+          indices.push(a + 6, a + 3, a + 7);
+
+          // Deck surface (bottom half)
+          indices.push(a + 2, a + 6, a + 1);
+          indices.push(a + 5, a + 1, a + 6);
+        }
       }
-  }
     }
-
   }
 
   // Build dedicated exterior wall strip with consistent UVs (only once)
   // For each segment vertex, create two wall vertices: bottom(-deckHeight)->v=0 and top(+deckHeight)->v=1
   const wallHeight_ext = deckHeight * 2; // Total height from -deckHeight to +deckHeight
   const circumference = 2 * Math.PI * radius;
-  
+
   for (let i = 0; i <= circleSegmentCount; i++) {
     const angle = i * segmentAngle;
     const cos = Math.cos(angle);
     const sin = Math.sin(angle);
-    
+
     // Calculate arc length to this point around the ring
     const arcLength = (i / circleSegmentCount) * circumference;
-    
+
     // Outward-facing normal for exterior wall (radial direction, no Y component)
     const normalX = cos;
     const normalY = 0;
     const normalZ = sin;
-    
+
     // Bottom of exterior wall
     extPositions.push(cos * radius, -deckHeight, sin * radius);
     extNormals.push(normalX, normalY, normalZ);
@@ -179,16 +182,22 @@ export function createProceduralHaloShell({
   );
   geometry.setAttribute("uv", new THREE.Float32BufferAttribute(uvs, 2));
   geometry.setIndex(indices);
-  
+
   // Set normals for exterior wall, compute normals for rest of geometry
   if (normals.length > 0) {
     // Fill in normals for non-exterior vertices (use computed normals)
     const tempGeometry = new THREE.BufferGeometry();
-    tempGeometry.setAttribute("position", new THREE.Float32BufferAttribute(positions.slice(0, baseVertexCount * 3), 3));
-    tempGeometry.setIndex(indices.filter(idx => idx < baseVertexCount));
+    tempGeometry.setAttribute(
+      "position",
+      new THREE.Float32BufferAttribute(
+        positions.slice(0, baseVertexCount * 3),
+        3
+      )
+    );
+    tempGeometry.setIndex(indices.filter((idx) => idx < baseVertexCount));
     tempGeometry.computeVertexNormals();
     const computedNormals = tempGeometry.getAttribute("normal");
-    
+
     // Combine computed normals with manual exterior normals
     const finalNormals = new Float32Array(positions.length);
     for (let i = 0; i < baseVertexCount * 3; i++) {
@@ -197,7 +206,10 @@ export function createProceduralHaloShell({
     for (let i = 0; i < normals.length; i++) {
       finalNormals[baseVertexCount * 3 + i] = normals[i];
     }
-    geometry.setAttribute("normal", new THREE.Float32BufferAttribute(finalNormals, 3));
+    geometry.setAttribute(
+      "normal",
+      new THREE.Float32BufferAttribute(finalNormals, 3)
+    );
   } else {
     geometry.computeVertexNormals();
   }
@@ -212,19 +224,19 @@ export function createProceduralHaloShell({
     metalness: 0.0,
     roughness: 1.0,
   });
-  
+
   // Set reasonable normal intensity for large-scale assets
   if (material.normalMap) {
     material.normalScale = new THREE.Vector2(1, 1);
   }
-  
+
   const mesh = new THREE.Mesh(geometry, material);
   mesh.castShadow = true;
   mesh.receiveShadow = true;
   mesh.name = "HaloShell";
-  
+
   // Add method to update sun direction (no-op for built-in materials using scene lights)
-  mesh.UpdateSunDirection = function(sunDirection) {
+  mesh.UpdateSunDirection = function (sunDirection) {
     // Built-in material uses actual scene lights; no action needed
   };
 
@@ -232,7 +244,11 @@ export function createProceduralHaloShell({
 }
 
 // Convenience helper to add the shell to a scene at a given center.
-export function addHaloShellToScene(scene, center = new THREE.Vector3(), opts = {}) {
+export function addHaloShellToScene(
+  scene,
+  center = new THREE.Vector3(),
+  opts = {}
+) {
   const shell = createProceduralHaloShell(opts);
   if (shell) {
     shell.position.copy(center);
@@ -255,35 +271,11 @@ export function addHaloExteriorShell(
     wallInnerDrop = 8000.0,
     wallHeight = 5000.0,
     color = 0xffffff,
-  texturePath = './resources/HaloExteriorTexture.png',
-  normalMapPath = './resources/Normal_HaloExteriorTexture.png',
+    texturePath = "./resources/HaloExteriorTexture.png",
+    normalMapPath = "./resources/Normal_HaloExteriorTexture.png",
   } = {}
 ) {
-
   const textureLoader = new THREE.TextureLoader();
-  const haloTexture = textureLoader.load(texturePath, (texture) => {
-    texture.wrapS = THREE.RepeatWrapping;
-    texture.wrapT = THREE.RepeatWrapping;
-    texture.colorSpace = THREE.SRGBColorSpace;
-    console.log('Halo exterior texture loaded successfully');
-    // Update material uniforms if shell already created
-    if (shell && shell.material && shell.material.uniforms && shell.material.uniforms.diffuseMap) {
-      shell.material.uniforms.diffuseMap.value = texture;
-      shell.material.uniforms.useTexture.value = true;
-    }
-  });
-
-  // Load normal map
-  const haloNormal = textureLoader.load(normalMapPath, (ntex) => {
-    ntex.wrapS = THREE.RepeatWrapping;
-    ntex.wrapT = THREE.RepeatWrapping;
-    ntex.colorSpace = THREE.LinearSRGBColorSpace; // normal maps use linear color space
-    console.log('Halo normal map loaded successfully');
-    if (shell && shell.material && shell.material.uniforms && shell.material.uniforms.normalMap) {
-      shell.material.uniforms.normalMap.value = ntex;
-      shell.material.uniforms.useNormalMap.value = true;
-    }
-  });
 
   // Create shell immediately; textures will populate as they load
   const shell = addHaloShellToScene(scene, center, {
@@ -293,8 +285,69 @@ export function addHaloExteriorShell(
     wallInnerDrop,
     wallHeight,
     color,
-    texture: haloTexture,
-    normalMap: haloNormal,
+    texture: null,
+    normalMap: null,
   });
+
+  textureLoader.load(
+    texturePath,
+    (texture) => {
+      texture.wrapS = THREE.RepeatWrapping;
+      texture.wrapT = THREE.RepeatWrapping;
+      texture.colorSpace = THREE.SRGBColorSpace;
+      texture.name = "haloShell:diffuse";
+      texture.userData = texture.userData || {};
+      texture.userData.sourcePath = texturePath;
+      console.log("Halo exterior texture loaded successfully");
+      if (shell && shell.material) {
+        shell.material.map = texture;
+        shell.material.needsUpdate = true;
+      }
+      if (
+        shell &&
+        shell.material &&
+        shell.material.uniforms &&
+        shell.material.uniforms.diffuseMap
+      ) {
+        shell.material.uniforms.diffuseMap.value = texture;
+        shell.material.uniforms.useTexture.value = true;
+      }
+    },
+    undefined,
+    (err) => {
+      console.error("Failed to load halo exterior texture", err, texturePath);
+    }
+  );
+
+  textureLoader.load(
+    normalMapPath,
+    (ntex) => {
+      ntex.wrapS = THREE.RepeatWrapping;
+      ntex.wrapT = THREE.RepeatWrapping;
+      ntex.colorSpace = THREE.LinearSRGBColorSpace; // normal maps use linear color space
+      ntex.name = "haloShell:normal";
+      ntex.userData = ntex.userData || {};
+      ntex.userData.sourcePath = normalMapPath;
+      console.log("Halo normal map loaded successfully");
+      if (shell && shell.material) {
+        shell.material.normalMap = ntex;
+        shell.material.needsUpdate = true;
+      }
+      if (
+        shell &&
+        shell.material &&
+        shell.material.uniforms &&
+        shell.material.uniforms.normalMap
+      ) {
+        shell.material.uniforms.normalMap.value = ntex;
+        shell.material.uniforms.useNormalMap.value = true;
+      }
+    },
+    undefined,
+    (err) => {
+      console.error("Failed to load halo normal map", err, normalMapPath);
+    }
+  );
+
   return shell;
 }

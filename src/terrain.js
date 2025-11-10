@@ -29,10 +29,7 @@ export const terrain = (function () {
       this._shapeParams = params.shapeParams || {};
 
       const loader = new THREE.TextureLoader();
-
-      const noiseTexture = loader.load("./resources/simplex-noise.png");
-      noiseTexture.wrapS = THREE.RepeatWrapping;
-      noiseTexture.wrapT = THREE.RepeatWrapping;
+      const noiseUniform = { value: null };
 
       const diffuse = new textures.TextureAtlas(params);
       diffuse.Load("diffuse", [
@@ -67,11 +64,9 @@ export const terrain = (function () {
 
       this._material = new THREE.ShaderMaterial({
         uniforms: {
-          diffuseMap: {},
-          normalMap: {},
-          noiseMap: {
-            value: noiseTexture,
-          },
+          diffuseMap: { value: null },
+          normalMap: { value: null },
+          noiseMap: noiseUniform,
           logDepthBufFC: {
             value: 2.0 / (Math.log(params.camera.far + 1.0) / Math.LN2),
           },
@@ -88,6 +83,26 @@ export const terrain = (function () {
         vertexColors: true,
         glslVersion: THREE.GLSL3,
       });
+
+      loader.load(
+        "./resources/simplex-noise.png",
+        (texture) => {
+          texture.wrapS = THREE.RepeatWrapping;
+          texture.wrapT = THREE.RepeatWrapping;
+          texture.name = "terrain:noiseMap";
+          texture.userData = texture.userData || {};
+          texture.userData.sourcePath = "./resources/simplex-noise.png";
+          noiseUniform.value = texture;
+        },
+        undefined,
+        (err) => {
+          console.error(
+            "Failed to load terrain noise texture",
+            err,
+            "./resources/simplex-noise.png"
+          );
+        }
+      );
 
       this._builder =
         new terrain_builder_threaded.TerrainChunkRebuilder_Threaded();
