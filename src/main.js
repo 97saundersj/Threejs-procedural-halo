@@ -99,8 +99,10 @@ class ProceduralTerrain_Demo extends game.Game {
         wallHeight: 5000.0,
         color: 0xffffff,
       });
+      this.graphics_.SetShadowFocus(ringCenter);
     } else {
       this._haloShell = null;
+      this.graphics_.SetShadowFocus(new THREE.Vector3(0, 0, 0));
     }
 
     this._AddEntity(

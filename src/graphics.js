@@ -43,6 +43,8 @@ export const graphics = (function () {
 
       // Initialize resolution scale before using it
       this._resolutionScale = 1.0;
+      this._shadowFocus = new THREE.Vector3(0, 0, 0);
+      this._currentSunDirection = new THREE.Vector3(1, 1, -1).normalize();
 
       const canvas = document.createElement("canvas");
       const context = canvas.getContext("webgl2", { alpha: false });
@@ -58,6 +60,8 @@ export const graphics = (function () {
       this._threejs.setPixelRatio(window.devicePixelRatio);
       this._threejs.setSize(window.innerWidth, window.innerHeight);
       this._threejs.autoClear = false;
+      this._threejs.shadowMap.enabled = true;
+      this._threejs.shadowMap.type = THREE.PCFSoftShadowMap;
 
       const target = document.getElementById("target");
       target.appendChild(this._threejs.domElement);
@@ -161,8 +165,20 @@ export const graphics = (function () {
       // Position will be set to match sun direction in UpdateLights
       this._sunLight = new THREE.DirectionalLight(0xffffff, 1.0);
       this._sunLight.position.set(100, 100, -100);
-      this._sunLight.target.position.set(0, 0, 0);
+      this._sunLight.target.position.copy(this._shadowFocus);
       this._sunLight.castShadow = true;
+
+      const shadowCam = this._sunLight.shadow.camera;
+      const shadowBounds = 500000;
+      shadowCam.left = -shadowBounds;
+      shadowCam.right = shadowBounds;
+      shadowCam.top = shadowBounds;
+      shadowCam.bottom = -shadowBounds;
+      shadowCam.near = 5000;
+      shadowCam.far = 1500000;
+      this._sunLight.shadow.mapSize.set(4096, 4096);
+      this._sunLight.shadow.bias = -0.0005;
+
       this._scene.add(this._sunLight);
 
       // Minimal ambient light for starlight on dark side
@@ -177,8 +193,12 @@ export const graphics = (function () {
       // Directional light rays travel FROM position TO target
       // So position should be in the direction the sun is located (opposite of light ray direction)
       const lightDistance = 1000000; // Far enough for parallel rays
-      this._sunLight.position.copy(sunDirection).multiplyScalar(lightDistance);
-      this._sunLight.target.position.set(0, 0, 0);
+      this._sunLight.position
+        .copy(sunDirection)
+        .multiplyScalar(lightDistance)
+        .add(this._shadowFocus);
+      this._sunLight.target.position.copy(this._shadowFocus);
+      this._sunLight.target.updateMatrixWorld();
       this._sunLight.updateMatrixWorld();
     }
 
@@ -206,6 +226,7 @@ export const graphics = (function () {
 
     UpdateSunDirection(sunDirection) {
       if (this._sunLight) {
+        this._currentSunDirection.copy(sunDirection);
         this.UpdateLights(sunDirection);
       }
       if (this._depthPass && this._depthPass.uniforms.sunDirection) {
@@ -268,6 +289,13 @@ export const graphics = (function () {
         window.innerHeight * this._resolutionScale
       );
       this._target.setSize(targetWidth, targetHeight);
+    }
+
+    SetShadowFocus(focus) {
+      this._shadowFocus.copy(focus);
+      if (this._sunLight) {
+        this.UpdateLights(this._currentSunDirection);
+      }
     }
   }
 

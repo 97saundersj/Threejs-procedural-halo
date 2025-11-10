@@ -76,6 +76,24 @@ export const terrain = (function () {
           ambientLightIntensity: {
             value: terrain_constants.AMBIENT_LIGHT_INTENSITY,
           },
+          shadowMap: {
+            value: null,
+          },
+          shadowMatrix: {
+            value: new THREE.Matrix4(),
+          },
+          shadowMapSize: {
+            value: new THREE.Vector2(1, 1),
+          },
+          shadowBias: {
+            value: 0.001,
+          },
+          shadowStrength: {
+            value: 1.0,
+          },
+          shadowFilterRadius: {
+            value: 1.5,
+          },
         },
         vertexShader: terrain_shader.VS,
         fragmentShader: terrain_shader.PS,
@@ -106,6 +124,14 @@ export const terrain = (function () {
 
       this._builder =
         new terrain_builder_threaded.TerrainChunkRebuilder_Threaded();
+
+      this._shadowParams = {
+        bias: 0.0008,
+        strength: 1.0,
+        filterRadius: 2.0,
+      };
+
+      this._sunLight = this._FindSunLight(params.scene);
 
       this._InitNoise(params);
       this._InitBiomes(params);
@@ -270,6 +296,9 @@ export const terrain = (function () {
     _InitTerrain(params) {
       params.guiParams.terrain = {
         wireframe: false,
+        shadowStrength: this._shadowParams.strength,
+        shadowBias: this._shadowParams.bias,
+        shadowFilterRadius: this._shadowParams.filterRadius,
       };
 
       this._groups = [...new Array(6)].map((_) => new THREE.Group());
@@ -285,10 +314,77 @@ export const terrain = (function () {
                 params.guiParams.terrain.wireframe;
             }
           });
+        terrainRollup
+          .add(params.guiParams.terrain, "shadowStrength", 0.0, 1.0)
+          .onChange((value) => {
+            this._shadowParams.strength = value;
+            if (this._material && this._material.uniforms.shadowStrength) {
+              this._material.uniforms.shadowStrength.value = value;
+            }
+          });
+        terrainRollup
+          .add(params.guiParams.terrain, "shadowBias", 0.0, 0.01)
+          .onChange((value) => {
+            this._shadowParams.bias = value;
+            if (this._material && this._material.uniforms.shadowBias) {
+              this._material.uniforms.shadowBias.value = value;
+            }
+          });
+        terrainRollup
+          .add(params.guiParams.terrain, "shadowFilterRadius", 0.0, 4.0)
+          .onChange((value) => {
+            this._shadowParams.filterRadius = value;
+            if (this._material && this._material.uniforms.shadowFilterRadius) {
+              this._material.uniforms.shadowFilterRadius.value = value;
+            }
+          });
       }
 
       this._chunks = {};
       this._params = params;
+    }
+
+    _FindSunLight(scene) {
+      let result = null;
+      if (!scene) {
+        return result;
+      }
+      scene.traverse((obj) => {
+        if (!result && obj instanceof THREE.DirectionalLight) {
+          result = obj;
+        }
+      });
+      return result;
+    }
+
+    _UpdateShadowUniforms() {
+      if (!this._material || !this._material.uniforms) {
+        return;
+      }
+
+      if (!this._sunLight || !this._sunLight.parent) {
+        this._sunLight = this._FindSunLight(this._params.scene);
+      }
+
+      if (
+        !this._sunLight ||
+        !this._sunLight.castShadow ||
+        !this._sunLight.shadow ||
+        !this._sunLight.shadow.map
+      ) {
+        return;
+      }
+
+      const uniforms = this._material.uniforms;
+      uniforms.shadowMap.value = this._sunLight.shadow.map.texture;
+      uniforms.shadowMatrix.value.copy(this._sunLight.shadow.matrix);
+      uniforms.shadowMapSize.value.set(
+        this._sunLight.shadow.mapSize.x,
+        this._sunLight.shadow.mapSize.y
+      );
+      uniforms.shadowBias.value = this._shadowParams.bias;
+      uniforms.shadowStrength.value = this._shadowParams.strength;
+      uniforms.shadowFilterRadius.value = this._shadowParams.filterRadius;
     }
 
     _CreateTerrainChunk(group, groupTransform, offset, width, resolution) {
@@ -338,6 +434,8 @@ export const terrain = (function () {
       if (!this._builder.Busy) {
         this._UpdateVisibleChunks_Quadtree();
       }
+
+      this._UpdateShadowUniforms();
 
       const cameraPosition = this._params.camera.position;
 

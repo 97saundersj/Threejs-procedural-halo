@@ -3,6 +3,7 @@ export const terrain_shader = (function () {
 
 uniform float fogDensity;
 uniform vec3 cloudScale;
+uniform mat4 shadowMatrix;
 
 // Attributes
 // in vec3 position;
@@ -23,6 +24,7 @@ out vec3 vVSPos;
 out vec4 vWeights1;
 out vec4 vWeights2;
 out float vFragDepth;
+out vec4 vShadowCoord;
 
 #define saturate(a) clamp( a, 0.0, 1.0 )
 
@@ -37,6 +39,9 @@ void main(){
 
   vUV = uv;
   vNormal = normal;
+
+  vec4 worldPosition = vec4(coords, 1.0);
+  vShadowCoord = shadowMatrix * worldPosition;
 
   float a = 65536.0;
   float p = a * 4.0;
@@ -67,6 +72,11 @@ uniform mat4 modelViewMatrix;
 uniform float logDepthBufFC;
 uniform vec3 sunDirection;
 uniform float ambientLightIntensity;
+uniform sampler2D shadowMap;
+uniform vec2 shadowMapSize;
+uniform float shadowBias;
+uniform float shadowStrength;
+uniform float shadowFilterRadius;
 
 in vec2 vUV;
 in vec4 vColor;
@@ -77,6 +87,7 @@ in vec3 vVSPos;
 in vec4 vWeights1;
 in vec4 vWeights2;
 in float vFragDepth;
+in vec4 vShadowCoord;
 
 out vec4 out_FragColor;
 
@@ -105,6 +116,18 @@ float sum(vec3 v) {
   return v.x+v.y+v.z;
 }
 
+const vec2 _POISSON_DISK[9] = vec2[](
+  vec2(-0.719, 0.269),
+  vec2(-0.255, -0.633),
+  vec2(0.186, -0.103),
+  vec2(0.633, 0.438),
+  vec2(-0.339, 0.771),
+  vec2(0.846, -0.340),
+  vec2(-0.078, 0.071),
+  vec2(-0.553, -0.239),
+  vec2(0.185, 0.799)
+);
+
 vec4 _CalculateLighting(
     vec3 lightDirection, vec3 lightColour, vec3 worldSpaceNormal, vec3 viewDirection) {
   float diffuse = saturate(dot(worldSpaceNormal, lightDirection));
@@ -129,6 +152,41 @@ vec4 _ComputeLighting(vec3 worldSpaceNormal, vec3 sunDir, vec3 viewDirection) {
   lighting += vec4(ambientLightIntensity, ambientLightIntensity, ambientLightIntensity, 0.0);
   
   return lighting;
+}
+
+float _ShadowVisibility(vec4 shadowCoord) {
+  float w = max(abs(shadowCoord.w), 0.0001);
+  vec3 projCoords = shadowCoord.xyz / w;
+
+  if (projCoords.z > 1.0) {
+    return 1.0;
+  }
+  if (projCoords.x < 0.0 || projCoords.x > 1.0 ||
+      projCoords.y < 0.0 || projCoords.y > 1.0) {
+    return 1.0;
+  }
+
+  vec2 texelSize = vec2(1.0) / shadowMapSize;
+  float currentDepth = projCoords.z - shadowBias;
+  float visibility = 0.0;
+  float samples = 0.0;
+
+  vec2 baseUV = projCoords.xy;
+  for (int i = 0; i < 9; ++i) {
+    vec2 offset = _POISSON_DISK[i] * texelSize * shadowFilterRadius;
+    vec2 sampleUV = baseUV + offset;
+
+    if (sampleUV.x < 0.0 || sampleUV.x > 1.0 ||
+        sampleUV.y < 0.0 || sampleUV.y > 1.0) {
+      visibility += 1.0;
+    } else {
+      float closestDepth = texture(shadowMap, sampleUV).r;
+      visibility += currentDepth <= closestDepth ? 1.0 : 0.0;
+    }
+    samples += 1.0;
+  }
+
+  return samples > 0.0 ? visibility / samples : 1.0;
 }
 
 vec4 _TerrainBlend_4(highp vec4 samples[4]) {
@@ -374,10 +432,19 @@ void main() {
   float planetLighting = saturate(dot(planetNormal, sunDir));
 
   vec4 lighting = _ComputeLighting(worldSpaceNormal, sunDir, -eyeDirection);
+  float shadowVis = 1.0;
+  if (shadowStrength > 0.001) {
+    shadowVis = _ShadowVisibility(vShadowCoord);
+  }
+  float shadowFactor = mix(1.0, shadowVis, saturate(shadowStrength));
+  vec3 ambientLight = vec3(ambientLightIntensity, ambientLightIntensity, ambientLightIntensity);
+  vec3 directLight = max(lighting.xyz - ambientLight, vec3(0.0));
+  directLight *= shadowFactor;
+  vec3 combinedLighting = ambientLight + directLight;
   vec3 finalColour = mix(vec3(1.0, 1.0, 1.0), vColor.xyz, 0.25) * diffuse;
   // vec3 finalColour = mix(vec3(1.0, 1.0, 1.0), vColor.xyz, 0.25);
 
-  finalColour *= lighting.xyz;
+  finalColour *= combinedLighting;
 
   out_FragColor = vec4(finalColour, 1);
   gl_FragDepth = log2(vFragDepth) * logDepthBufFC * 0.5;
