@@ -1,8 +1,6 @@
-import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.112.1/build/three.module.js';
+import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.181.0/build/three.module.js";
 
-
-export const quadtree = (function() {
-
+export const quadtree = (function () {
   class CubeQuadTree {
     constructor(params) {
       this._params = params;
@@ -41,7 +39,7 @@ export const quadtree = (function() {
       m = new THREE.Matrix4();
       m.premultiply(new THREE.Matrix4().makeTranslation(0, 0, r));
       transforms.push(m);
-      
+
       // -Z
       m = new THREE.Matrix4();
       m.makeRotationY(Math.PI);
@@ -51,15 +49,15 @@ export const quadtree = (function() {
       for (let t of transforms) {
         this._sides.push({
           transform: t.clone(),
-          worldToLocal: t.clone().getInverse(t),
+          worldToLocal: t.clone().invert(),
           quadtree: new QuadTree({
             size: r,
             min_node_size: params.min_node_size,
-            localToWorld: t
+            localToWorld: t,
           }),
         });
       }
-   }
+    }
 
     GetChildren() {
       const children = [];
@@ -68,7 +66,7 @@ export const quadtree = (function() {
         const side = {
           transform: s.transform,
           children: s.quadtree.GetChildren(),
-        }
+        };
         children.push(side);
       }
       return children;
@@ -86,7 +84,8 @@ export const quadtree = (function() {
       const s = params.size;
       const b = new THREE.Box3(
         new THREE.Vector3(-s, -s, 0),
-        new THREE.Vector3(s, s, 0));
+        new THREE.Vector3(s, s, 0)
+      );
       this._root = {
         bounds: b,
         children: [],
@@ -118,7 +117,7 @@ export const quadtree = (function() {
       for (let c of node.children) {
         this._GetChildren(c, target);
       }
-  }
+    }
 
     Insert(pos) {
       this._Insert(this._root, pos);
@@ -127,7 +126,10 @@ export const quadtree = (function() {
     _Insert(child, pos) {
       const distToChild = this._DistanceToChild(child, pos);
 
-      if (distToChild < child.size.x * 1.0 && child.size.x > this._params.min_node_size) {
+      if (
+        distToChild < child.size.x * 1.0 &&
+        child.size.x > this._params.min_node_size
+      ) {
         child.children = this._CreateChildren(child);
 
         for (let c of child.children) {
@@ -149,30 +151,31 @@ export const quadtree = (function() {
       // Bottom right
       const b2 = new THREE.Box3(
         new THREE.Vector3(midpoint.x, child.bounds.min.y, 0),
-        new THREE.Vector3(child.bounds.max.x, midpoint.y, 0));
+        new THREE.Vector3(child.bounds.max.x, midpoint.y, 0)
+      );
 
       // Top left
       const b3 = new THREE.Box3(
         new THREE.Vector3(child.bounds.min.x, midpoint.y, 0),
-        new THREE.Vector3(midpoint.x, child.bounds.max.y, 0));
+        new THREE.Vector3(midpoint.x, child.bounds.max.y, 0)
+      );
 
       // Top right
       const b4 = new THREE.Box3(midpoint, child.bounds.max);
 
-      const children = [b1, b2, b3, b4].map(
-          b => {
-            return {
-              bounds: b,
-              children: [],
-              center: b.getCenter(new THREE.Vector3()),
-              size: b.getSize(new THREE.Vector3())
-            };
-          });
+      const children = [b1, b2, b3, b4].map((b) => {
+        return {
+          bounds: b,
+          children: [],
+          center: b.getCenter(new THREE.Vector3()),
+          size: b.getSize(new THREE.Vector3()),
+        };
+      });
 
       for (let c of children) {
         c.sphereCenter = c.center.clone();
         c.sphereCenter.applyMatrix4(this._params.localToWorld);
-        c.sphereCenter.normalize()
+        c.sphereCenter.normalize();
         c.sphereCenter.multiplyScalar(this._params.size);
       }
 
@@ -183,5 +186,5 @@ export const quadtree = (function() {
   return {
     QuadTree: QuadTree,
     CubeQuadTree: CubeQuadTree,
-  }
+  };
 })();

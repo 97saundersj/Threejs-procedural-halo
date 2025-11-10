@@ -1,27 +1,23 @@
 export const scattering_shader = (function () {
-  const _VS = `#version 300 es
+  const _VS = `precision highp float;
 
-precision highp float;
+#define saturate(a) clamp( a, 0.0, 1.0 )
 
-  #define saturate(a) clamp( a, 0.0, 1.0 )
+out vec2 vUv;
 
-  out vec2 vUv;
+void main() {
+  vUv = uv;
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+}
+`;
 
-  void main() {
-    vUv = uv;
-    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-  }
-  `;
+  const _PS = `precision highp float;
 
-  const _PS = `#version 300 es
-
-precision highp float;
-
-  #include <packing>
+#include <common>
+#include <packing>
 
   #define saturate(a) clamp( a, 0.0, 1.0 )
 
-  #define PI 3.141592
   #define PRIMARY_STEP_COUNT 16
   #define LIGHT_STEP_COUNT 8
 

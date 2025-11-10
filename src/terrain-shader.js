@@ -1,7 +1,5 @@
 export const terrain_shader = (function () {
-  const _VS = `#version 300 es
-
-precision highp float;
+  const _VS = `precision highp float;
 
 uniform float fogDensity;
 uniform vec3 cloudScale;
@@ -54,9 +52,7 @@ void main(){
 }
   `;
 
-  const _PS = `#version 300 es
-
-precision highp float;
+  const _PS = `precision highp float;
 precision highp int;
 precision highp sampler2DArray;
 precision highp sampler2D;

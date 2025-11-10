@@ -1,4 +1,4 @@
-import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.112.1/build/three.module.js";
+import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.181.0/build/three.module.js";
 
 import { quadtree } from "./quadtree.js";
 import { ocean_shader } from "./ocean-shader.js";
@@ -93,6 +93,7 @@ export const ocean = (function () {
         transparent: true,
         depthWrite: false, // Disable depth writing for transparent objects
         depthTest: true, // Enable depth testing to properly occlude behind terrain
+        glslVersion: THREE.GLSL3,
       });
 
       // GUI params
@@ -214,8 +215,7 @@ export const ocean = (function () {
 
     _CreateOceanChunk(group, groupTransform, offset, width, resolution) {
       // Create a plane geometry for the ocean surface
-      // Use PlaneBufferGeometry for Three.js r112 (which has attributes)
-      const geometry = new THREE.PlaneBufferGeometry(
+      const geometry = new THREE.PlaneGeometry(
         width,
         width,
         resolution,
@@ -226,7 +226,6 @@ export const ocean = (function () {
       geometry.computeVertexNormals();
 
       // Transform vertices to spherical surface
-      // In Three.js r112, access attributes via geometry.attributes
       if (!geometry.attributes) {
         console.error("Ocean geometry missing attributes object", geometry);
         return null;

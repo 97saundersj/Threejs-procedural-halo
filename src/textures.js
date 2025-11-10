@@ -1,18 +1,16 @@
-import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.112.1/build/three.module.js';
+import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.181.0/build/three.module.js";
 
-
-export const textures = (function() {
-
+export const textures = (function () {
   // Taken from https://github.com/mrdoob/three.js/issues/758
-  function _GetImageData( image ) {
-    var canvas = document.createElement('canvas');
+  function _GetImageData(image) {
+    var canvas = document.createElement("canvas");
     canvas.width = image.width;
     canvas.height = image.height;
 
-    var context = canvas.getContext('2d');
-    context.drawImage( image, 0, 0 );
+    var context = canvas.getContext("2d");
+    context.drawImage(image, 0, 0);
 
-    return context.getImageData( 0, 0, image.width, image.height );
+    return context.getImageData(0, 0, image.width, image.height);
   }
 
   return {
@@ -53,8 +51,13 @@ export const textures = (function() {
 
             data.set(curData.data, offset);
           }
-    
-          const diffuse = new THREE.DataTexture2DArray(data, 1024, 1024, atlas.textures.length);
+
+          const diffuse = new THREE.DataArrayTexture(
+            data,
+            1024,
+            1024,
+            atlas.textures.length
+          );
           diffuse.format = THREE.RGBAFormat;
           diffuse.type = THREE.UnsignedByteType;
           diffuse.minFilter = THREE.LinearMipMapLinearFilter;
@@ -62,7 +65,8 @@ export const textures = (function() {
           diffuse.wrapS = THREE.RepeatWrapping;
           diffuse.wrapT = THREE.RepeatWrapping;
           diffuse.generateMipmaps = true;
-          diffuse.encoding = THREE.sRGBEncoding;
+          diffuse.colorSpace = THREE.LinearSRGBColorSpace;
+          diffuse.needsUpdate = true;
 
           atlas.atlas = diffuse;
         }
@@ -72,9 +76,9 @@ export const textures = (function() {
 
       LoadAtlas_(atlas, names) {
         this.textures_[atlas] = {
-          textures: names.map(n => this.loader_.load(n))
+          textures: names.map((n) => this.loader_.load(n)),
         };
       }
-    }
+    },
   };
 })();

@@ -1,4 +1,4 @@
-import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.112.1/build/three.module.js";
+import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.181.0/build/three.module.js";
 
 // Factory for a simple ring (halo) shell geometry.
 // Creates a segmented tubular wall with an inner gap (like a habitation shell).
@@ -264,7 +264,7 @@ export function addHaloExteriorShell(
   const haloTexture = textureLoader.load(texturePath, (texture) => {
     texture.wrapS = THREE.RepeatWrapping;
     texture.wrapT = THREE.RepeatWrapping;
-    texture.encoding = THREE.sRGBEncoding;
+    texture.colorSpace = THREE.SRGBColorSpace;
     console.log('Halo exterior texture loaded successfully');
     // Update material uniforms if shell already created
     if (shell && shell.material && shell.material.uniforms && shell.material.uniforms.diffuseMap) {
@@ -277,7 +277,7 @@ export function addHaloExteriorShell(
   const haloNormal = textureLoader.load(normalMapPath, (ntex) => {
     ntex.wrapS = THREE.RepeatWrapping;
     ntex.wrapT = THREE.RepeatWrapping;
-    ntex.encoding = THREE.LinearEncoding; // normal maps use linear
+    ntex.colorSpace = THREE.LinearSRGBColorSpace; // normal maps use linear color space
     console.log('Halo normal map loaded successfully');
     if (shell && shell.material && shell.material.uniforms && shell.material.uniforms.normalMap) {
       shell.material.uniforms.normalMap.value = ntex;

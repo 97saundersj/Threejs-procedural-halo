@@ -1,4 +1,4 @@
-import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.112.1/build/three.module.js";
+import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.181.0/build/three.module.js";
 
 import { noise } from "./noise.js";
 import { quadtree } from "./quadtree.js";
@@ -86,6 +86,7 @@ export const terrain = (function () {
         fragmentShader: terrain_shader.PS,
         side: THREE.FrontSide,
         vertexColors: true,
+        glslVersion: THREE.GLSL3,
       });
 
       this._builder =

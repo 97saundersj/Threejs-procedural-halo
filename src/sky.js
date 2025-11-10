@@ -1,7 +1,7 @@
-import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.112.1/build/three.module.js';
+import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.181.0/build/three.module.js';
 
-import {Sky} from 'https://cdn.jsdelivr.net/npm/three@0.112.1/examples/jsm/objects/Sky.js';
-import {Water} from 'https://cdn.jsdelivr.net/npm/three@0.112.1/examples/jsm/objects/Water.js';
+import {Sky} from 'https://cdn.jsdelivr.net/npm/three@0.181.0/examples/jsm/objects/Sky.js';
+import {Water} from 'https://cdn.jsdelivr.net/npm/three@0.181.0/examples/jsm/objects/Water.js';
 
 
 export const sky = (function() {
@@ -13,7 +13,7 @@ export const sky = (function() {
     }
 
     _Init(params) {
-      const waterGeometry = new THREE.PlaneBufferGeometry(10000, 10000, 100, 100);
+      const waterGeometry = new THREE.PlaneGeometry(10000, 10000, 100, 100);
 
       this._water = new Water(
         waterGeometry,
