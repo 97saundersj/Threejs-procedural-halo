@@ -1,7 +1,5 @@
 export const ocean_shader = (function () {
-  const _VS = `#version 300 es
-
-precision highp float;
+  const _VS = `precision highp float;
 
 uniform float time;
 uniform float distortionScale;
@@ -64,9 +62,7 @@ void main() {
 }
   `;
 
-  const _PS = `#version 300 es
-
-precision highp float;
+  const _PS = `precision highp float;
 
 uniform float time;
 uniform float distortionScale;

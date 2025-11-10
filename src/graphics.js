@@ -1,12 +1,12 @@
-import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.112.1/build/three.module.js";
-import Stats from "https://cdn.jsdelivr.net/npm/three@0.112.1/examples/jsm/libs/stats.module.js";
-import { WEBGL } from "https://cdn.jsdelivr.net/npm/three@0.112.1/examples/jsm/WebGL.js";
+import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.181.0/build/three.module.js";
+import Stats from "https://cdn.jsdelivr.net/npm/three@0.181.0/examples/jsm/libs/stats.module.js";
+import WebGL from "https://cdn.jsdelivr.net/npm/three@0.181.0/examples/jsm/capabilities/WebGL.js";
 
-import { RenderPass } from "https://cdn.jsdelivr.net/npm/three@0.112.1/examples/jsm/postprocessing/RenderPass.js";
-import { ShaderPass } from "https://cdn.jsdelivr.net/npm/three@0.112.1/examples/jsm/postprocessing/ShaderPass.js";
-import { CopyShader } from "https://cdn.jsdelivr.net/npm/three@0.112.1/examples/jsm/shaders/CopyShader.js";
-import { FXAAShader } from "https://cdn.jsdelivr.net/npm/three@0.112.1/examples/jsm/shaders/FXAAShader.js";
-import { EffectComposer } from "https://cdn.jsdelivr.net/npm/three@0.112.1/examples/jsm/postprocessing/EffectComposer.js";
+import { RenderPass } from "https://cdn.jsdelivr.net/npm/three@0.181.0/examples/jsm/postprocessing/RenderPass.js";
+import { ShaderPass } from "https://cdn.jsdelivr.net/npm/three@0.181.0/examples/jsm/postprocessing/ShaderPass.js";
+import { CopyShader } from "https://cdn.jsdelivr.net/npm/three@0.181.0/examples/jsm/shaders/CopyShader.js";
+import { FXAAShader } from "https://cdn.jsdelivr.net/npm/three@0.181.0/examples/jsm/shaders/FXAAShader.js";
+import { EffectComposer } from "https://cdn.jsdelivr.net/npm/three@0.181.0/examples/jsm/postprocessing/EffectComposer.js";
 
 import { scattering_shader } from "./scattering-shader.js";
 
@@ -37,7 +37,7 @@ export const graphics = (function () {
     constructor(game) {}
 
     Initialize() {
-      if (!WEBGL.isWebGL2Available()) {
+      if (!WebGL.isWebGL2Available()) {
         return false;
       }
 
@@ -54,7 +54,7 @@ export const graphics = (function () {
         // Enable logarithmic depth buffer so built-in materials work at planetary scale
         logarithmicDepthBuffer: true,
       });
-      this._threejs.outputEncoding = THREE.LinearEncoding;
+      this._threejs.outputColorSpace = THREE.LinearSRGBColorSpace;
       this._threejs.setPixelRatio(window.devicePixelRatio);
       this._threejs.setSize(window.innerWidth, window.innerHeight);
       this._threejs.autoClear = false;
@@ -117,7 +117,7 @@ export const graphics = (function () {
       this._target.depthTexture = new THREE.DepthTexture();
       this._target.depthTexture.format = THREE.DepthFormat;
       this._target.depthTexture.type = THREE.FloatType;
-      this._target.outputEncoding = THREE.LinearEncoding;
+      this._target.texture.colorSpace = THREE.LinearSRGBColorSpace;
 
       this._threejs.setRenderTarget(this._target);
 
@@ -127,6 +127,7 @@ export const graphics = (function () {
       this._depthPass = new THREE.ShaderMaterial({
         vertexShader: scattering_shader.VS,
         fragmentShader: scattering_shader.PS,
+        glslVersion: THREE.GLSL3,
         uniforms: {
           cameraNear: { value: this.Camera.near },
           cameraFar: { value: this.Camera.far },
@@ -143,7 +144,7 @@ export const graphics = (function () {
           sunDirection: { value: new THREE.Vector3(1, 1, -1).normalize() },
         },
       });
-      var postPlane = new THREE.PlaneBufferGeometry(2, 2);
+      var postPlane = new THREE.PlaneGeometry(2, 2);
       var postQuad = new THREE.Mesh(postPlane, this._depthPass);
       this._postScene = new THREE.Scene();
       this._postScene.add(postQuad);

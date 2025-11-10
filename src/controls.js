@@ -1,5 +1,5 @@
-import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.112.1/build/three.module.js";
-import { OrbitControls } from "https://cdn.jsdelivr.net/npm/three@0.112.1/examples/jsm/controls/OrbitControls.js";
+import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.181.0/build/three.module.js";
+import { OrbitControls } from "https://cdn.jsdelivr.net/npm/three@0.181.0/examples/jsm/controls/OrbitControls.js";
 
 export const controls = (function () {
   const KM_CUBE_SIZE = 1000;
@@ -12,8 +12,7 @@ export const controls = (function () {
     KM_CUBE_SIZE
   );
 
-  const KM_CUBE_VS = `#version 300 es
-precision highp float;
+  const KM_CUBE_VS = `precision highp float;
 
 out float vFragDepth;
 
@@ -25,8 +24,7 @@ void main() {
 }
 `;
 
-  const KM_CUBE_FS = `#version 300 es
-precision highp float;
+  const KM_CUBE_FS = `precision highp float;
 
 uniform vec3 color;
 uniform float logDepthBufFC;

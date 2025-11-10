@@ -1,5 +1,5 @@
-import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.112.1/build/three.module.js";
-import { GUI } from "https://cdn.jsdelivr.net/npm/three@0.112.1/examples/jsm/libs/dat.gui.module.js";
+import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.181.0/build/three.module.js";
+import GUI from "https://cdn.jsdelivr.net/npm/lil-gui@0.19/+esm";
 import { controls } from "./controls.js";
 import { game } from "./game.js";
 import { terrain } from "./terrain.js";
@@ -85,7 +85,10 @@ class ProceduralTerrain_Demo extends game.Game {
     }
 
     // Add a simple visible textured shell structure around the ring for context
-    if (this._currentSceneType === "ring" || this._currentSceneType === "both") {
+    if (
+      this._currentSceneType === "ring" ||
+      this._currentSceneType === "both"
+    ) {
       const ringCenter = new THREE.Vector3(terrain_constants.RING_OFFSET, 0, 0);
       this._haloShell = addHaloExteriorShell(this.graphics_.Scene, ringCenter, {
         camera: this.graphics_.Camera,
@@ -321,16 +324,34 @@ class ProceduralTerrain_Demo extends game.Game {
   _LoadBackground() {
     this.graphics_.Scene.background = new THREE.Color(0x000000);
     const loader = new THREE.CubeTextureLoader();
-    const texture = loader.load([
-      "./resources/space-posx.jpg",
-      "./resources/space-negx.jpg",
-      "./resources/space-posy.jpg",
-      "./resources/space-negy.jpg",
-      "./resources/space-posz.jpg",
-      "./resources/space-negz.jpg",
-    ]);
-    texture.encoding = THREE.sRGBEncoding;
-    this.graphics_.Scene.background = texture;
+    loader.load(
+      [
+        "./resources/space-posx.jpg",
+        "./resources/space-negx.jpg",
+        "./resources/space-posy.jpg",
+        "./resources/space-negy.jpg",
+        "./resources/space-posz.jpg",
+        "./resources/space-negz.jpg",
+      ],
+      (texture) => {
+        texture.colorSpace = THREE.SRGBColorSpace;
+        texture.name = "skybox:space";
+        texture.userData = texture.userData || {};
+        texture.userData.sourcePaths = [
+          "./resources/space-posx.jpg",
+          "./resources/space-negx.jpg",
+          "./resources/space-posy.jpg",
+          "./resources/space-negy.jpg",
+          "./resources/space-posz.jpg",
+          "./resources/space-negz.jpg",
+        ];
+        this.graphics_.Scene.background = texture;
+      },
+      undefined,
+      (err) => {
+        console.error("Failed to load cube background textures", err);
+      }
+    );
   }
 
   _OnStep(timeInSeconds) {

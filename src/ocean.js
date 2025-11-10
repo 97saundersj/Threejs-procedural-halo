@@ -1,4 +1,4 @@
-import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.112.1/build/three.module.js";
+import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.181.0/build/three.module.js";
 
 import { quadtree } from "./quadtree.js";
 import { ocean_shader } from "./ocean-shader.js";
@@ -37,12 +37,7 @@ export const ocean = (function () {
 
       // Load water normals texture
       const loader = new THREE.TextureLoader();
-      const waterNormalsTexture = loader.load("./resources/waternormals.jpg");
-      waterNormalsTexture.wrapS = THREE.RepeatWrapping;
-      waterNormalsTexture.wrapT = THREE.RepeatWrapping;
-      waterNormalsTexture.minFilter = THREE.LinearMipMapLinearFilter;
-      waterNormalsTexture.magFilter = THREE.LinearFilter;
-      waterNormalsTexture.generateMipmaps = true;
+      const waterNormalsUniform = { value: null };
 
       // Ocean material
       this._material = new THREE.ShaderMaterial({
@@ -59,9 +54,7 @@ export const ocean = (function () {
           logDepthBufFC: {
             value: 2.0 / (Math.log(params.camera.far + 1.0) / Math.LN2),
           },
-          waterNormals: {
-            value: waterNormalsTexture,
-          },
+          waterNormals: waterNormalsUniform,
           uvScale: {
             value: 0.1,
           },
@@ -93,7 +86,31 @@ export const ocean = (function () {
         transparent: true,
         depthWrite: false, // Disable depth writing for transparent objects
         depthTest: true, // Enable depth testing to properly occlude behind terrain
+        glslVersion: THREE.GLSL3,
       });
+
+      loader.load(
+        "./resources/waternormals.jpg",
+        (texture) => {
+          texture.wrapS = THREE.RepeatWrapping;
+          texture.wrapT = THREE.RepeatWrapping;
+          texture.minFilter = THREE.LinearMipMapLinearFilter;
+          texture.magFilter = THREE.LinearFilter;
+          texture.generateMipmaps = true;
+          texture.name = "ocean:waterNormals";
+          texture.userData = texture.userData || {};
+          texture.userData.sourcePath = "./resources/waternormals.jpg";
+          waterNormalsUniform.value = texture;
+        },
+        undefined,
+        (err) => {
+          console.error(
+            "Failed to load water normals texture",
+            err,
+            "./resources/waternormals.jpg"
+          );
+        }
+      );
 
       // GUI params
       params.guiParams.ocean = {
@@ -214,8 +231,7 @@ export const ocean = (function () {
 
     _CreateOceanChunk(group, groupTransform, offset, width, resolution) {
       // Create a plane geometry for the ocean surface
-      // Use PlaneBufferGeometry for Three.js r112 (which has attributes)
-      const geometry = new THREE.PlaneBufferGeometry(
+      const geometry = new THREE.PlaneGeometry(
         width,
         width,
         resolution,
@@ -226,7 +242,6 @@ export const ocean = (function () {
       geometry.computeVertexNormals();
 
       // Transform vertices to spherical surface
-      // In Three.js r112, access attributes via geometry.attributes
       if (!geometry.attributes) {
         console.error("Ocean geometry missing attributes object", geometry);
         return null;
